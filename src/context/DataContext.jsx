@@ -22,8 +22,17 @@ import {
   generateFacultyAndAssignments
 } from '../data/collegeDataGenerator';
 
-const DataContext = createContext();
-const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:5000/api';
+const getApiBase = () => {
+  if (import.meta.env.VITE_API_BASE) {
+    return import.meta.env.VITE_API_BASE;
+  }
+  if (typeof window !== 'undefined' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+    return 'https://collegemanagement-production.up.railway.app/api';
+  }
+  return 'http://localhost:5000/api';
+};
+
+const API_BASE = getApiBase();
 
 export const DataProvider = ({ children }) => {
   const [dbConnected, setDbConnected] = useState(false);
