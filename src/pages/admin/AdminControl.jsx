@@ -489,13 +489,6 @@ export const AdminControl = () => {
                     {departments.map(d => <option key={d.id} value={d.name}>{d.name}</option>)}
                   </select>
                 </div>
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1">Course</label>
-                  <select required className="w-full p-2.5 border rounded-lg" onChange={e => setFormData({ ...formData, course: e.target.value })}>
-                    <option value="">Select Course</option>
-                    {courses.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
-                  </select>
-                </div>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
@@ -763,7 +756,6 @@ export const AdminControl = () => {
                       assignedTeacherId: sub ? sub.assignedTeacherId : ''
                     });
                   }}>
-                    <option value="">Select Course</option>
                     {((courses && courses.length > 0) ? courses : (subjects || [])).map(s => <option key={s.id || s.code} value={s.code}>{s.code} - {s.name}</option>)}
                   </select>
                 </div>
