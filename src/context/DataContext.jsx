@@ -283,15 +283,20 @@ export const DataProvider = ({ children }) => {
           fetch(`${API_BASE}/fees`).then(r => r.ok ? r.json() : Promise.reject(r.status))
         ]);
 
-        if (stdRes.status === 'fulfilled' && Array.isArray(stdRes.value) && stdRes.value.length > 0) {
+        const anyBackendSuccess = [stdRes, tchRes, subRes, dptRes, crsRes, hlpRes, annRes, levRes, fcaRes, exmRes, mrkRes, attRes, tAttRes, notifRes, adtRes, asnRes, feeRes].some(r => r.status === 'fulfilled');
+
+        if (anyBackendSuccess) {
           setDbConnected(true);
+        }
+
+        if (stdRes.status === 'fulfilled' && Array.isArray(stdRes.value)) {
           const teachers = (tchRes.status === 'fulfilled' && Array.isArray(tchRes.value) ? tchRes.value : []).map(t => ({
             ...t,
             role: 'TEACHER',
             employeeId: t.employeeId || t.id,
             status: t.status || 'Active'
           }));
-          const students = (stdRes.status === 'fulfilled' && Array.isArray(stdRes.value) ? stdRes.value : []).map(s => ({
+          const students = stdRes.value.map(s => ({
             ...s,
             role: 'STUDENT',
             studentId: s.studentId || s.id,
@@ -301,7 +306,6 @@ export const DataProvider = ({ children }) => {
           setUsers(prev => {
             const adminUsers = prev.filter(u => u.role === 'ADMIN');
             const fallbackAdmins = adminUsers.length > 0 ? adminUsers : INITIAL_USERS.filter(u => u.role === 'ADMIN');
-            // If backend teachers is empty, keep initial faculty
             const facultyPool = teachers.length > 0 ? teachers : INITIAL_USERS.filter(u => u.role === 'TEACHER');
             return [...fallbackAdmins, ...facultyPool, ...students];
           });
@@ -329,6 +333,7 @@ export const DataProvider = ({ children }) => {
         }
         if (subRes.status === 'fulfilled' && Array.isArray(subRes.value) && subRes.value.length > 0) {
           setSubjectOfferings(subRes.value);
+          setSubjects(subRes.value);
         }
         if (dptRes.status === 'fulfilled' && Array.isArray(dptRes.value) && dptRes.value.length > 0) {
           setDepartments(dptRes.value);
