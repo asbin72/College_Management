@@ -646,20 +646,52 @@ app.put('/api/courses/:id', async (req, res) => {
   const { id } = req.params;
   const s = req.body;
   try {
+    const [[existing]] = await dbPool.query('SELECT * FROM courses WHERE id = ? OR code = ?', [id, id]);
+    const oldCode = existing ? existing.code : id;
+    const oldName = existing ? existing.name : '';
+
     await dbPool.query(`
       UPDATE courses 
       SET name = COALESCE(?, name), code = COALESCE(?, code), department = COALESCE(?, department),
           departmentCode = COALESCE(?, departmentCode), semester = COALESCE(?, semester),
           credits = COALESCE(?, credits), courseType = COALESCE(?, courseType),
-          assignedTeacherName = COALESCE(?, assignedTeacherName)
+          assignedTeacherName = COALESCE(?, assignedTeacherName), status = COALESCE(?, status)
       WHERE id = ? OR code = ?
     `, [
       s.name, s.code, s.department, s.departmentCode, s.semester,
-      s.credits ? Number(s.credits) : null, s.courseType || s.subjectType, s.assignedTeacherName,
+      s.credits ? Number(s.credits) : null, s.courseType || s.subjectType, s.assignedTeacherName, s.status,
       id, id
     ]);
-    broadcastRealTimeEvent('COURSE_UPDATED', { id });
-    res.json({ success: true, message: `Course ${id} updated.` });
+
+    // Relational cascading updates to related database tables
+    if (s.name || s.code || s.assignedTeacherName || s.department) {
+      const newCode = s.code || oldCode;
+      const newName = s.name || oldName;
+      const newTeacher = s.assignedTeacherName;
+
+      await dbPool.query(`
+        UPDATE subjects SET name = ?, code = ?, department = COALESCE(?, department) WHERE code = ? OR id = ?
+      `, [newName, newCode, s.department, oldCode, id]).catch(() => {});
+
+      await dbPool.query(`
+        UPDATE faculty_class_assignments SET subjectCode = ?, subjectName = ?, teacherName = COALESCE(?, teacherName) WHERE subjectCode = ?
+      `, [newCode, newName, newTeacher, oldCode]).catch(() => {});
+
+      await dbPool.query(`
+        UPDATE assignments SET subject = ?, code = ?, teacherName = COALESCE(?, teacherName) WHERE code = ? OR subject = ?
+      `, [newName, newCode, newTeacher, oldCode, oldName]).catch(() => {});
+
+      await dbPool.query(`
+        UPDATE attendance_logs SET subjectCode = ?, subjectName = ? WHERE subjectCode = ? OR subjectName = ?
+      `, [newCode, newName, oldCode, oldName]).catch(() => {});
+
+      await dbPool.query(`
+        UPDATE marks SET subjectCode = ?, subjectName = ? WHERE subjectCode = ? OR subjectName = ?
+      `, [newCode, newName, oldCode, oldName]).catch(() => {});
+    }
+
+    broadcastRealTimeEvent('COURSE_UPDATED', { id, code: s.code || oldCode, name: s.name || oldName });
+    res.json({ success: true, message: `Course ${id} updated with relational cascading.` });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
@@ -668,9 +700,15 @@ app.put('/api/courses/:id', async (req, res) => {
 app.delete('/api/courses/:id', async (req, res) => {
   const { id } = req.params;
   try {
+    const [[existing]] = await dbPool.query('SELECT * FROM courses WHERE id = ? OR code = ?', [id, id]);
+    const targetCode = existing ? existing.code : id;
+
     await dbPool.query('DELETE FROM courses WHERE id = ? OR code = ?', [id, id]);
-    broadcastRealTimeEvent('COURSE_DELETED', { id });
-    res.json({ success: true, message: `Course ${id} deleted.` });
+    await dbPool.query('DELETE FROM subjects WHERE id = ? OR code = ?', [id, targetCode]).catch(() => {});
+    await dbPool.query('DELETE FROM faculty_class_assignments WHERE subjectCode = ?', [targetCode]).catch(() => {});
+
+    broadcastRealTimeEvent('COURSE_DELETED', { id, code: targetCode });
+    res.json({ success: true, message: `Course ${id} deleted with relational cascading.` });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }

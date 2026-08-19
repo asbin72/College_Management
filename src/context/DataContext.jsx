@@ -745,34 +745,60 @@ export const DataProvider = ({ children }) => {
   // -------------------------------------------------------------
   // COURSE MANAGEMENT CRUD
   // -------------------------------------------------------------
-  const addCourse = (courseData, actorUser) => {
+  const addCourse = async (courseData, actorUser) => {
     const newCourse = {
       id: `crs-${Date.now()}`,
       name: courseData.name,
       code: courseData.code,
-      department: courseData.department,
-      duration: courseData.duration || '4 Years (8 Semesters)',
-      description: courseData.description || '',
-      status: courseData.status || 'Active',
-      type: courseData.type || 'Undergraduate',
-      fees: courseData.fees || '₹1,20,000 / Year',
-      image: courseData.image || 'https://images.unsplash.com/photo-1555066931-4365d14bab8c?auto=format&fit=crop&q=80&w=800'
+      department: courseData.department || 'Computer Science & Engineering',
+      departmentCode: courseData.departmentCode || (courseData.code ? String(courseData.code).split('-')[0] : 'CSE'),
+      semester: courseData.semester || 'Semester 1',
+      credits: Number(courseData.credits || 4),
+      courseType: courseData.type || courseData.courseType || 'Core Theory',
+      assignedTeacherName: courseData.assignedTeacherName || 'Faculty In-Charge',
+      status: courseData.status || 'Active'
     };
     setCourses(prev => [newCourse, ...prev]);
-    logAction(actorUser, 'COURSE_CREATED', `Created degree course ${newCourse.name} (${newCourse.code})`);
+    setSubjects(prev => [newCourse, ...prev]);
+    setSubjectOfferings(prev => [newCourse, ...prev]);
+
+    try {
+      await fetch(`${API_BASE}/courses`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newCourse)
+      });
+    } catch (e) {}
+
+    logAction(actorUser, 'COURSE_CREATED', `Created course ${newCourse.name} (${newCourse.code})`);
     return newCourse;
   };
 
-  const updateCourse = (courseId, updatedFields, actorUser) => {
-    setCourses(prev => prev.map(c => c.id === courseId ? { ...c, ...updatedFields } : c));
+  const updateCourse = async (courseId, updatedFields, actorUser) => {
+    setCourses(prev => prev.map(c => (c.id === courseId || c.code === courseId) ? { ...c, ...updatedFields } : c));
+    setSubjects(prev => prev.map(s => (s.id === courseId || s.code === courseId) ? { ...s, ...updatedFields } : s));
+    setSubjectOfferings(prev => prev.map(s => (s.id === courseId || s.code === courseId) ? { ...s, ...updatedFields } : s));
+
+    try {
+      await fetch(`${API_BASE}/courses/${courseId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updatedFields)
+      });
+    } catch (e) {}
+
     logAction(actorUser, 'COURSE_UPDATED', `Updated course ID ${courseId}`);
   };
 
-  const deleteCourse = (courseId, actorUser) => {
+  const deleteCourse = async (courseId, actorUser) => {
     setCourses(prev => prev.filter(c => c.id !== courseId && c.code !== courseId));
+    setSubjects(prev => prev.filter(s => s.id !== courseId && s.code !== courseId));
+    setSubjectOfferings(prev => prev.filter(s => s.id !== courseId && s.code !== courseId));
+
     try {
-      fetch(`${API_BASE}/courses/${courseId}`, { method: 'DELETE' }).catch(() => {});
+      await fetch(`${API_BASE}/courses/${courseId}`, { method: 'DELETE' });
     } catch (e) {}
+
     logAction(actorUser, 'COURSE_DELETED', `Deleted course ${courseId}`);
   };
 
