@@ -4,6 +4,7 @@ import { useData } from '../../context/DataContext';
 import { PortalHeader } from '../../components/portal/PortalHeader';
 import { Sidebar } from '../../components/portal/Sidebar';
 import { Plus, Edit, Power, Search, X, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react';
+import { SEMESTERS } from '../../data/collegeDataGenerator';
 
 export const AdminSubjects = () => {
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -357,15 +358,10 @@ export const AdminSubjects = () => {
                 </div>
                 <div>
                   <label className="block font-bold text-slate-700 mb-1">Semester</label>
-                  <select required value={formData.semester || '1st Semester'} className="w-full p-2.5 border rounded-lg" onChange={e => setFormData({ ...formData, semester: e.target.value })}>
-                    <option value="1st Semester">1st Semester</option>
-                    <option value="2nd Semester">2nd Semester</option>
-                    <option value="3rd Semester">3rd Semester</option>
-                    <option value="4th Semester">4th Semester</option>
-                    <option value="5th Semester">5th Semester</option>
-                    <option value="6th Semester">6th Semester</option>
-                    <option value="7th Semester">7th Semester</option>
-                    <option value="8th Semester">8th Semester</option>
+                  <select required value={formData.semester || 'Semester 1'} className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-lg font-bold text-navy focus:border-gold focus:outline-none" onChange={e => setFormData({ ...formData, semester: e.target.value })}>
+                    {(String(formData.department || '').toLowerCase().includes('management') || String(formData.department || '').toLowerCase().includes('mba') ? SEMESTERS.slice(0, 4) : SEMESTERS).map(s => (
+                      <option key={s.sem} value={s.sem}>{s.sem} ({s.year})</option>
+                    ))}
                   </select>
                 </div>
               </div>

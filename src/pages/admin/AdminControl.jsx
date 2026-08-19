@@ -6,6 +6,7 @@ import { Sidebar } from '../../components/portal/Sidebar';
 import { AdminAuditLogsTable } from '../../components/portal/AdminAuditLogsTable';
 import { Users, Building, BookOpen, FileText, Clock, Award, CalendarCheck, Plus, CheckCircle2, AlertCircle, Bell, ShieldCheck, X, UserCheck } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
+import { SEMESTERS } from '../../data/collegeDataGenerator';
 
 export const AdminControl = () => {
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -493,7 +494,11 @@ export const AdminControl = () => {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block font-bold text-slate-700 mb-1">Semester</label>
-                  <input required type="text" placeholder="6th Semester" className="w-full p-2.5 border rounded-lg" onChange={e => setFormData({ ...formData, semester: e.target.value })} />
+                  <select required value={formData.semester || 'Semester 1'} className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-lg font-bold text-navy focus:border-gold focus:outline-none" onChange={e => setFormData({ ...formData, semester: e.target.value })}>
+                    {(String(formData.department || '').toLowerCase().includes('management') || String(formData.department || '').toLowerCase().includes('mba') ? SEMESTERS.slice(0, 4) : SEMESTERS).map(s => (
+                      <option key={s.sem} value={s.sem}>{s.sem} ({s.year})</option>
+                    ))}
+                  </select>
                 </div>
                 <div>
                   <label className="block font-bold text-slate-700 mb-1">Login Password</label>
