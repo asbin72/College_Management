@@ -1600,9 +1600,10 @@ app.get('/api/results/student/:studentId', async (req, res) => {
 });
 
 // Start Express Server
-if (process.env.NODE_ENV !== 'production' || !process.env.VERCEL) {
+const PORT = process.env.PORT || 5000;
+if (!process.env.VERCEL) {
   app.listen(PORT, () => {
-    console.log(`🌐 Kalpanaaa Enterprise API Server running on http://localhost:${PORT}`);
+    console.log(`🌐 Kalpanaaa Enterprise API Server running on port ${PORT}`);
   });
 }
 
