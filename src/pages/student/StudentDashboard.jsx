@@ -68,6 +68,8 @@ export const StudentDashboard = () => {
   );
   const myAttendedCount = myAttendanceLogs.filter(a => a.status === 'Present').length;
   const myTotalAttCount = myAttendanceLogs.length;
+  const isNewStudent = currentUser.isNewUser || (!myTotalAttCount && (!currentUser.overallAttendance || currentUser.overallAttendance === '0%'));
+  
   const studentAttendance = myTotalAttCount > 0 
     ? `${Math.round((myAttendedCount / myTotalAttCount) * 100)}%` 
     : (currentUser.overallAttendance && currentUser.overallAttendance !== '100%' ? currentUser.overallAttendance : '0%');
