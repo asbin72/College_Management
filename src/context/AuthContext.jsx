@@ -37,37 +37,16 @@ export const AuthProvider = ({ children, users = [] }) => {
     localStorage.setItem('kalpanaaa_sandbox_state', JSON.stringify(sandboxState));
   }, [sandboxState]);
 
-  // LOGIN (Queries role-separated MySQL tables or local dataset)
+  // INSTANT LOGIN (Checks local pool first for 1ms response, then API with 1.5s timeout)
   const login = async (identifier, password) => {
     setAuthError('');
     const cleanId = (identifier || '').trim();
     const normalizedId = cleanId.toLowerCase();
 
-    try {
-      // 1. Try MySQL API Server Login
-      const response = await fetch(`${API_BASE}/auth/login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ identifier: cleanId, password })
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        if (data.success && data.user) {
-          setCurrentUser(data.user);
-          localStorage.setItem('kalpanaaa_auth_user', JSON.stringify(data.user));
-          setSandboxState({ isPreview: false, previewRole: null, realUser: null });
-          return { success: true, user: data.user, role: data.user.role };
-        }
-      }
-    } catch (err) {
-      // Backend offline
-    }
-
-    // 2. Comprehensive Local Fallback Dataset
+    // 1. Instant Local User Match (0ms latency for Admin & active users)
     const fullUserPool = [...(users || []), ...INITIAL_USERS];
 
-    const user = fullUserPool.find(u => {
+    const localUser = fullUserPool.find(u => {
       if (!u) return false;
       const uEmail = (u.email || '').toLowerCase();
       const uStudentId = (u.studentId || '').toLowerCase();
@@ -102,10 +81,42 @@ export const AuthProvider = ({ children, users = [] }) => {
       return (emailMatch || idMatch) && passMatch;
     });
 
-    if (!user) {
-      setAuthError('Invalid credentials. Please verify your Email/ID and Password.');
-      return { success: false, error: 'Invalid credentials.' };
+    if (localUser) {
+      setCurrentUser(localUser);
+      localStorage.setItem('kalpanaaa_auth_user', JSON.stringify(localUser));
+      setSandboxState({ isPreview: false, previewRole: null, realUser: null });
+      return { success: true, user: localUser, role: localUser.role };
     }
+
+    // 2. Fast MySQL API Server Login (with 1.5s timeout)
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 1500);
+
+      const response = await fetch(`${API_BASE}/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ identifier: cleanId, password }),
+        signal: controller.signal
+      });
+
+      clearTimeout(timeoutId);
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success && data.user) {
+          setCurrentUser(data.user);
+          localStorage.setItem('kalpanaaa_auth_user', JSON.stringify(data.user));
+          setSandboxState({ isPreview: false, previewRole: null, realUser: null });
+          return { success: true, user: data.user, role: data.user.role };
+        }
+      }
+    } catch (err) {
+      // API timeout or offline
+    }
+
+    setAuthError('Invalid credentials. Please verify your Email/ID and Password.');
+    return { success: false, error: 'Invalid credentials.' };
 
     setCurrentUser(user);
     localStorage.setItem('kalpanaaa_auth_user', JSON.stringify(user));
