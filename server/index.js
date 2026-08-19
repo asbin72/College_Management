@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import mysql from 'mysql2/promise';
@@ -11,8 +12,11 @@ const JWT_SECRET = process.env.JWT_SECRET || 'kalpanaaa_super_secret_jwt_key_202
 // CORS — universal access for frontend and API clients
 app.use(cors({
   origin: true,
-  credentials: true
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
 }));
+app.options('*', cors());
 app.use(express.json({ limit: '10mb' }));
 
 // MySQL Connection Pool — uses Railway env vars in production, localhost in dev

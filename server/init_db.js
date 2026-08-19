@@ -1,7 +1,21 @@
+import 'dotenv/config';
 import mysql from 'mysql2/promise';
 
 async function createTablesIfNotExist(connection) {
   const tableSchemas = [
+    `CREATE TABLE IF NOT EXISTS admins (
+      id VARCHAR(50) PRIMARY KEY,
+      employeeId VARCHAR(50) UNIQUE NOT NULL,
+      name VARCHAR(150) NOT NULL,
+      email VARCHAR(150) UNIQUE NOT NULL,
+      password VARCHAR(255) NOT NULL,
+      designation VARCHAR(100) DEFAULT 'Super Administrator',
+      phone VARCHAR(20),
+      avatar VARCHAR(255),
+      photoUrl VARCHAR(255),
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;`,
+
     `CREATE TABLE IF NOT EXISTS students (
       id VARCHAR(50) PRIMARY KEY,
       studentId VARCHAR(50) UNIQUE NOT NULL,
@@ -323,6 +337,17 @@ export async function initializeDatabase() {
 
     console.log('🔌 Connected to MySQL server:', process.env.MYSQLDATABASE || 'kalpanaa_education_db');
     await createTablesIfNotExist(connection);
+
+    // Seed Default Admin if empty
+    const [admCount] = await connection.query('SELECT COUNT(*) as count FROM admins');
+    if (admCount[0].count === 0) {
+      console.log('🔑 Seeding default administrator account into MySQL...');
+      await connection.query(`
+        INSERT INTO admins (id, employeeId, name, email, password, designation)
+        VALUES (?, ?, ?, ?, ?, ?)
+        ON DUPLICATE KEY UPDATE name = VALUES(name)
+      `, ['user-admin', 'ADM-001', 'Administrator', 'admin@kalpanaaa.edu', 'admin123', 'Super Administrator & Dean']);
+    }
 
     // Seed Departments if empty
     const [dptCount] = await connection.query('SELECT COUNT(*) as count FROM departments');

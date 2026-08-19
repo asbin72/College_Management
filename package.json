@@ -11,9 +11,10 @@
   },
   "scripts": {
     "dev": "vite",
-    "start": "node index.js || node server/index.js",
+    "start": "node server/index.js",
     "start:client": "vite",
     "start:server": "node server/index.js",
+    "db:clear": "node scripts/clear_all_demo_data.js",
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview"
