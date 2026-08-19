@@ -1641,6 +1641,35 @@ app.get('/api/results/student/:studentId', async (req, res) => {
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
+// Clean all demo data endpoint (preserves Admins & Departments)
+app.post('/api/admin/clean-demo-data', async (req, res) => {
+  try {
+    await dbPool.query("DELETE FROM students");
+    await dbPool.query("DELETE FROM teachers");
+    await dbPool.query("DELETE FROM courses");
+    await dbPool.query("DELETE FROM subjects");
+    await dbPool.query("DELETE FROM attendance_logs");
+    await dbPool.query("DELETE FROM teacher_attendance_logs");
+    await dbPool.query("DELETE FROM faculty_class_assignments");
+    await dbPool.query("DELETE FROM examinations");
+    await dbPool.query("DELETE FROM marks");
+    await dbPool.query("DELETE FROM internal_marks");
+    await dbPool.query("DELETE FROM results");
+    await dbPool.query("DELETE FROM assignments");
+    await dbPool.query("DELETE FROM assignment_submissions");
+    await dbPool.query("DELETE FROM notifications");
+    await dbPool.query("DELETE FROM leave_requests");
+    await dbPool.query("DELETE FROM fee_payments");
+    await dbPool.query("DELETE FROM admission_applications");
+    await dbPool.query("DELETE FROM helpdesk_tickets");
+    await dbPool.query("DELETE FROM announcements");
+    await dbPool.query("DELETE FROM audit_logs");
+
+    broadcastRealTimeEvent('DEMO_DATA_CLEANED', { status: 'success' });
+    res.json({ success: true, message: 'All demo AI data successfully flushed from MySQL database.' });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
 });
 
 // Start Express Server
