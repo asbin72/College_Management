@@ -589,8 +589,8 @@ export const DataProvider = ({ children }) => {
       parentName: studentData.parentName || '',
       parentPhone: studentData.parentPhone || '',
       admissionDate: studentData.admissionDate || new Date().toISOString().split('T')[0],
-      gpa: studentData.gpa || '3.75',
-      overallAttendance: studentData.overallAttendance || '100%',
+      gpa: studentData.gpa || '0.00',
+      overallAttendance: studentData.overallAttendance || '0%',
       pendingFees: Number(studentData.pendingFees || 0),
       createdAt: new Date().toISOString().split('T')[0]
     };

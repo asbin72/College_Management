@@ -68,21 +68,19 @@ export const StudentDashboard = () => {
   );
   const myAttendedCount = myAttendanceLogs.filter(a => a.status === 'Present').length;
   const myTotalAttCount = myAttendanceLogs.length;
-  const isNewStudent = currentUser.isNewUser || (!myTotalAttCount && currentUser.overallAttendance === '0%');
-  
   const studentAttendance = myTotalAttCount > 0 
     ? `${Math.round((myAttendedCount / myTotalAttCount) * 100)}%` 
-    : (isNewStudent ? '0%' : (currentUser.overallAttendance || '0%'));
+    : (currentUser.overallAttendance && currentUser.overallAttendance !== '100%' ? currentUser.overallAttendance : '0%');
   
   const attNumVal = parseFloat(studentAttendance) || 0;
 
   // Compute live GPA from published marks & results
   const myResultSummary = (results || []).find(r => r.student_id === studentCode || r.studentId === studentCode || r.student_id === currentUser.id);
   const myPublishedMarks = (marksRecords || []).filter(m => (m.studentId === studentCode || m.studentId === currentUser.id) && (m.published === true || m.published === 1));
-  const studentGpa = myResultSummary ? (myResultSummary.cgpa || myResultSummary.sgpa) : (
+  const studentGpa = myResultSummary ? (myResultSummary.cgpa || myResultSummary.sgpa || '0.00') : (
     myPublishedMarks.length > 0
       ? (myPublishedMarks.reduce((acc, curr) => acc + (Number(curr.marksObtained || 0) / 25), 0) / myPublishedMarks.length).toFixed(2)
-      : (isNewStudent ? '0.00' : (currentUser.gpa || '0.00'))
+      : (currentUser.gpa && currentUser.gpa !== '3.75' ? currentUser.gpa : '0.00')
   );
   const gpaNumVal = parseFloat(studentGpa) || 0;
 
