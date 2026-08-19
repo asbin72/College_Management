@@ -384,13 +384,14 @@ export const INITIAL_DEPARTMENTS = [
 ];
 
 export const INITIAL_COURSES = [
-  { id: 'crs-1', name: 'B.Tech Computer Science & Engineering', code: 'CS-101', department: 'Computer Science & Engineering', departmentCode: 'CSE', duration: '4 Years', fees: 125000, type: 'Undergraduate', status: 'Active' },
-  { id: 'crs-2', name: 'B.Tech Information Science & Engineering', code: 'IS-101', department: 'Information Science & Engineering', departmentCode: 'ISE', duration: '4 Years', fees: 125000, type: 'Undergraduate', status: 'Active' },
-  { id: 'crs-3', name: 'B.Tech Electronics & Communication Engineering', code: 'EC-101', department: 'Electronics & Communication Engineering', departmentCode: 'ECE', duration: '4 Years', fees: 125000, type: 'Undergraduate', status: 'Active' },
-  { id: 'crs-4', name: 'B.Tech Electrical & Electronics Engineering', code: 'EE-101', department: 'Electrical & Electronics Engineering', departmentCode: 'EEE', duration: '4 Years', fees: 125000, type: 'Undergraduate', status: 'Active' },
-  { id: 'crs-5', name: 'B.Tech Mechanical Engineering', code: 'ME-101', department: 'Mechanical Engineering', departmentCode: 'ME', duration: '4 Years', fees: 120000, type: 'Undergraduate', status: 'Active' },
-  { id: 'crs-6', name: 'B.Tech Civil Engineering', code: 'CE-101', department: 'Civil & Environmental Engineering', departmentCode: 'CE', duration: '4 Years', fees: 120000, type: 'Undergraduate', status: 'Active' },
-  { id: 'crs-7', name: 'Master of Business Administration (MBA)', code: 'MBA-101', department: 'Management Studies', departmentCode: 'MBA', duration: '2 Years', fees: 180000, type: 'Postgraduate', status: 'Active' }
+  { id: 'crs-1', name: 'Data Structures & Algorithms', code: 'CSE-301', department: 'Computer Science & Engineering', departmentCode: 'CSE', semester: '5th Semester', credits: 4, type: 'Core Theory', status: 'Active', assignedTeacherName: 'Dr. Rajesh Sharma' },
+  { id: 'crs-2', name: 'Database Management Systems', code: 'CSE-302', department: 'Computer Science & Engineering', departmentCode: 'CSE', semester: '5th Semester', credits: 4, type: 'Core Theory', status: 'Active', assignedTeacherName: 'Prof. Amit Verma' },
+  { id: 'crs-3', name: 'Operating Systems & Kernel Architecture', code: 'CSE-401', department: 'Computer Science & Engineering', departmentCode: 'CSE', semester: '5th Semester', credits: 4, type: 'Core Theory', status: 'Active', assignedTeacherName: 'Dr. Rajesh Sharma' },
+  { id: 'crs-4', name: 'Digital Signal Processing', code: 'ECE-301', department: 'Electronics & Communication Engineering', departmentCode: 'ECE', semester: '5th Semester', credits: 4, type: 'Core Theory', status: 'Active', assignedTeacherName: 'Dr. Suresh Kumar' },
+  { id: 'crs-5', name: 'Full Stack Web Architecture', code: 'ISE-301', department: 'Information Science & Engineering', departmentCode: 'ISE', semester: '5th Semester', credits: 4, type: 'Core Theory', status: 'Active', assignedTeacherName: 'Prof. Anitha Rao' },
+  { id: 'crs-6', name: 'Thermodynamics & Heat Transfer', code: 'ME-301', department: 'Mechanical Engineering', departmentCode: 'ME', semester: '5th Semester', credits: 4, type: 'Core Theory', status: 'Active', assignedTeacherName: 'Dr. Vikramaditya Singh' },
+  { id: 'crs-7', name: 'Structural Analysis & Concrete Tech', code: 'CE-301', department: 'Civil & Environmental Engineering', departmentCode: 'CE', semester: '5th Semester', credits: 4, type: 'Core Theory', status: 'Active', assignedTeacherName: 'Dr. Meenakshi Sundaram' },
+  { id: 'crs-8', name: 'Managerial Economics & Finance', code: 'MBA-101', department: 'Management Studies', departmentCode: 'MBA', semester: '1st Semester', credits: 4, type: 'Core Theory', status: 'Active', assignedTeacherName: 'Dr. Brijesh Malhotra' }
 ];
 
 export const INITIAL_ANNOUNCEMENTS = [

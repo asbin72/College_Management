@@ -222,7 +222,7 @@ export const AdminCourses = () => {
                 <thead className="bg-navy text-gold uppercase font-bold tracking-wider text-[10px] sticky top-0 z-10 shadow-sm">
                   <tr>
                     <th className="p-3.5">Code</th>
-                    <th className="p-3.5">Course Title</th>
+                    <th className="p-3.5">Subject / Course Title</th>
                     <th className="p-3.5">Department</th>
                     <th className="p-3.5">Semester</th>
                     <th className="p-3.5">Credits</th>
