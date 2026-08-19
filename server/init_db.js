@@ -327,8 +327,16 @@ async function createTablesIfNotExist(connection) {
 export async function initializeDatabase() {
   try {
     let connectionUrl = process.env.MYSQL_URL || process.env.DATABASE_URL || process.env.MYSQL_PRIVATE_URL;
-    if (connectionUrl && connectionUrl.includes('${{')) {
-      connectionUrl = null;
+    if (connectionUrl) {
+      if (connectionUrl.includes('${{')) {
+        connectionUrl = null;
+      } else {
+        try {
+          new URL(connectionUrl);
+        } catch (e) {
+          connectionUrl = null;
+        }
+      }
     }
     const connConfig = connectionUrl
       ? { uri: connectionUrl, ssl: { rejectUnauthorized: false } }
