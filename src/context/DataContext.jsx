@@ -22,6 +22,8 @@ import {
   generateFacultyAndAssignments
 } from '../data/collegeDataGenerator';
 
+const DataContext = createContext();
+
 const getApiBase = () => {
   if (import.meta.env.VITE_API_BASE) {
     return import.meta.env.VITE_API_BASE;
