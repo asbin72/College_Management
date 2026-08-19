@@ -3,10 +3,12 @@ import mysql from 'mysql2/promise';
 export async function initializeDatabase() {
   try {
     const connection = await mysql.createConnection({
-      host: 'localhost',
-      user: 'root',
-      password: 'root',
-      database: 'kalpanaa_education_db'
+      host: process.env.MYSQLHOST || process.env.DB_HOST || 'localhost',
+      user: process.env.MYSQLUSER || process.env.DB_USER || 'root',
+      password: process.env.MYSQLPASSWORD || process.env.DB_PASSWORD || 'root',
+      database: process.env.MYSQLDATABASE || process.env.DB_NAME || 'kalpanaa_education_db',
+      port: parseInt(process.env.MYSQLPORT || process.env.DB_PORT || '3306'),
+      ssl: process.env.MYSQLHOST ? { rejectUnauthorized: false } : undefined
     });
 
     console.log('🔌 Connected to MySQL server: kalpanaaa_education_db');

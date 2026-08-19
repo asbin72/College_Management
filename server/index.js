@@ -8,18 +8,28 @@ const app = express();
 const PORT = process.env.PORT || 5000;
 const JWT_SECRET = process.env.JWT_SECRET || 'kalpanaaa_super_secret_jwt_key_2026_prod';
 
-app.use(cors());
+// CORS — allow frontend Vercel domain and localhost dev
+app.use(cors({
+  origin: [
+    'http://localhost:3000',
+    'http://localhost:5173',
+    process.env.FRONTEND_URL || 'https://college-management-seven-tau.vercel.app'
+  ],
+  credentials: true
+}));
 app.use(express.json({ limit: '10mb' }));
 
-// MySQL Connection Pool
+// MySQL Connection Pool — uses Railway env vars in production, localhost in dev
 const dbPool = mysql.createPool({
-  host: 'localhost',
-  user: 'root',
-  password: 'root',
-  database: 'kalpanaa_education_db',
+  host: process.env.MYSQLHOST || process.env.DB_HOST || 'localhost',
+  user: process.env.MYSQLUSER || process.env.DB_USER || 'root',
+  password: process.env.MYSQLPASSWORD || process.env.DB_PASSWORD || 'root',
+  database: process.env.MYSQLDATABASE || process.env.DB_NAME || 'kalpanaa_education_db',
+  port: parseInt(process.env.MYSQLPORT || process.env.DB_PORT || '3306'),
   waitForConnections: true,
-  connectionLimit: 15,
-  queueLimit: 0
+  connectionLimit: 10,
+  queueLimit: 0,
+  ssl: process.env.MYSQLHOST ? { rejectUnauthorized: false } : undefined
 });
 
 // Initialize DB schema and seed on startup
