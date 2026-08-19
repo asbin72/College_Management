@@ -77,7 +77,6 @@ export const Footer = () => {
               <li><Link to="/academics/departments" className="hover:text-gold transition-colors flex items-center"><ArrowUpRight className="w-3 h-3 mr-1 text-gold" />Departments</Link></li>
               <li><Link to="/academics/programs" className="hover:text-gold transition-colors flex items-center"><ArrowUpRight className="w-3 h-3 mr-1 text-gold" />Programs Offered</Link></li>
               <li><Link to="/academics/courses" className="hover:text-gold transition-colors flex items-center"><ArrowUpRight className="w-3 h-3 mr-1 text-gold" />Degree Courses</Link></li>
-              <li><Link to="/academics/faculty" className="hover:text-gold transition-colors flex items-center"><ArrowUpRight className="w-3 h-3 mr-1 text-gold" />Faculty Directory</Link></li>
               <li><Link to="/academics/academic-calendar" className="hover:text-gold transition-colors flex items-center"><ArrowUpRight className="w-3 h-3 mr-1 text-gold" />Academic Calendar</Link></li>
             </ul>
           </div>
@@ -91,7 +90,6 @@ export const Footer = () => {
               <li><Link to="/admissions/application" className="hover:text-gold transition-colors flex items-center"><ArrowUpRight className="w-3 h-3 mr-1 text-gold" />Apply Online</Link></li>
               <li><Link to="/admissions/process" className="hover:text-gold transition-colors flex items-center"><ArrowUpRight className="w-3 h-3 mr-1 text-gold" />Admission Process</Link></li>
               <li><Link to="/admissions/eligibility" className="hover:text-gold transition-colors flex items-center"><ArrowUpRight className="w-3 h-3 mr-1 text-gold" />Eligibility Criteria</Link></li>
-              <li><Link to="/admissions/scholarships" className="hover:text-gold transition-colors flex items-center"><ArrowUpRight className="w-3 h-3 mr-1 text-gold" />Scholarships & Aid</Link></li>
               <li><Link to="/admissions/fees" className="hover:text-gold transition-colors flex items-center"><ArrowUpRight className="w-3 h-3 mr-1 text-gold" />Fee Structure</Link></li>
             </ul>
           </div>
@@ -106,7 +104,6 @@ export const Footer = () => {
               <li><Link to="/campus-life/library" className="hover:text-gold transition-colors flex items-center"><ArrowUpRight className="w-3 h-3 mr-1 text-gold" />University Library</Link></li>
               <li><Link to="/campus-life/sports" className="hover:text-gold transition-colors flex items-center"><ArrowUpRight className="w-3 h-3 mr-1 text-gold" />Sports & Athletics</Link></li>
               <li><Link to="/campus-life/clubs" className="hover:text-gold transition-colors flex items-center"><ArrowUpRight className="w-3 h-3 mr-1 text-gold" />Student Clubs</Link></li>
-              <li><Link to="/campus-life/events" className="hover:text-gold transition-colors flex items-center"><ArrowUpRight className="w-3 h-3 mr-1 text-gold" />Upcoming Events</Link></li>
             </ul>
           </div>
 
