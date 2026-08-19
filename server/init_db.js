@@ -380,7 +380,5 @@ export async function initializeDatabase() {
   } catch (err) {
     console.error('Database connection verification:', err.message);
   }
-}ication:', err.message);
-  }
 }
 

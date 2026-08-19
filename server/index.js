@@ -1645,6 +1645,7 @@ app.get('/api/results/student/:studentId', async (req, res) => {
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
+});
 // Clean all demo data endpoint (preserves Admins & Departments)
 app.post('/api/admin/clean-demo-data', async (req, res) => {
   try {
