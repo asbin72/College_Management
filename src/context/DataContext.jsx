@@ -264,23 +264,23 @@ export const DataProvider = ({ children }) => {
     async function syncFromBackend() {
       try {
         const [stdRes, tchRes, subRes, dptRes, crsRes, hlpRes, annRes, levRes, fcaRes, exmRes, mrkRes, attRes, tAttRes, notifRes, adtRes, asnRes, feeRes] = await Promise.allSettled([
-          fetch(`${API_BASE}/students`).then(r => r.json()),
-          fetch(`${API_BASE}/teachers`).then(r => r.json()),
-          fetch(`${API_BASE}/subjects`).then(r => r.json()),
-          fetch(`${API_BASE}/departments`).then(r => r.json()),
-          fetch(`${API_BASE}/courses`).then(r => r.json()),
-          fetch(`${API_BASE}/helpdesk`).then(r => r.json()),
-          fetch(`${API_BASE}/announcements`).then(r => r.json()),
-          fetch(`${API_BASE}/leave-requests`).then(r => r.json()),
-          fetch(`${API_BASE}/faculty-assignments`).then(r => r.json()),
-          fetch(`${API_BASE}/examinations`).then(r => r.json()),
-          fetch(`${API_BASE}/marks`).then(r => r.json()),
-          fetch(`${API_BASE}/attendance`).then(r => r.json()),
-          fetch(`${API_BASE}/teacher-attendance`).then(r => r.json()),
-          fetch(`${API_BASE}/notifications`).then(r => r.json()),
-          fetch(`${API_BASE}/audit-logs`).then(r => r.json()),
-          fetch(`${API_BASE}/assignments`).then(r => r.json()),
-          fetch(`${API_BASE}/fees`).then(r => r.json())
+          fetch(`${API_BASE}/students`).then(r => r.ok ? r.json() : Promise.reject(r.status)),
+          fetch(`${API_BASE}/teachers`).then(r => r.ok ? r.json() : Promise.reject(r.status)),
+          fetch(`${API_BASE}/subjects`).then(r => r.ok ? r.json() : Promise.reject(r.status)),
+          fetch(`${API_BASE}/departments`).then(r => r.ok ? r.json() : Promise.reject(r.status)),
+          fetch(`${API_BASE}/courses`).then(r => r.ok ? r.json() : Promise.reject(r.status)),
+          fetch(`${API_BASE}/helpdesk`).then(r => r.ok ? r.json() : Promise.reject(r.status)),
+          fetch(`${API_BASE}/announcements`).then(r => r.ok ? r.json() : Promise.reject(r.status)),
+          fetch(`${API_BASE}/leave-requests`).then(r => r.ok ? r.json() : Promise.reject(r.status)),
+          fetch(`${API_BASE}/faculty-assignments`).then(r => r.ok ? r.json() : Promise.reject(r.status)),
+          fetch(`${API_BASE}/examinations`).then(r => r.ok ? r.json() : Promise.reject(r.status)),
+          fetch(`${API_BASE}/marks`).then(r => r.ok ? r.json() : Promise.reject(r.status)),
+          fetch(`${API_BASE}/attendance`).then(r => r.ok ? r.json() : Promise.reject(r.status)),
+          fetch(`${API_BASE}/teacher-attendance`).then(r => r.ok ? r.json() : Promise.reject(r.status)),
+          fetch(`${API_BASE}/notifications`).then(r => r.ok ? r.json() : Promise.reject(r.status)),
+          fetch(`${API_BASE}/audit-logs`).then(r => r.ok ? r.json() : Promise.reject(r.status)),
+          fetch(`${API_BASE}/assignments`).then(r => r.ok ? r.json() : Promise.reject(r.status)),
+          fetch(`${API_BASE}/fees`).then(r => r.ok ? r.json() : Promise.reject(r.status))
         ]);
 
         if (stdRes.status === 'fulfilled' && Array.isArray(stdRes.value) && stdRes.value.length > 0) {
