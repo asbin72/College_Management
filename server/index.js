@@ -19,18 +19,32 @@ app.use(cors({
 app.options('*', cors());
 app.use(express.json({ limit: '10mb' }));
 
-// MySQL Connection Pool — uses Railway env vars in production, localhost in dev
-const dbPool = mysql.createPool({
-  host: process.env.MYSQLHOST || process.env.DB_HOST || 'localhost',
-  user: process.env.MYSQLUSER || process.env.DB_USER || 'root',
-  password: process.env.MYSQLPASSWORD || process.env.DB_PASSWORD || 'root',
-  database: process.env.MYSQLDATABASE || process.env.DB_NAME || 'kalpanaa_education_db',
-  port: parseInt(process.env.MYSQLPORT || process.env.DB_PORT || '3306'),
-  waitForConnections: true,
-  connectionLimit: 10,
-  queueLimit: 0,
-  ssl: process.env.MYSQLHOST ? { rejectUnauthorized: false } : undefined
-});
+// MySQL Connection Pool — supports MYSQL_URL, Railway env vars, and localhost fallback
+const getDbConfig = () => {
+  const connectionUrl = process.env.MYSQL_URL || process.env.DATABASE_URL || process.env.MYSQL_PRIVATE_URL;
+  if (connectionUrl) {
+    return {
+      uri: connectionUrl,
+      waitForConnections: true,
+      connectionLimit: 10,
+      queueLimit: 0,
+      ssl: { rejectUnauthorized: false }
+    };
+  }
+  return {
+    host: process.env.MYSQLPUBLICHOST || process.env.MYSQLHOST || process.env.DB_HOST || 'localhost',
+    user: process.env.MYSQLUSER || process.env.DB_USER || 'root',
+    password: process.env.MYSQLPASSWORD || process.env.DB_PASSWORD || 'root',
+    database: process.env.MYSQLDATABASE || process.env.DB_NAME || 'kalpanaa_education_db',
+    port: parseInt(process.env.MYSQLPUBLICPORT || process.env.MYSQLPORT || process.env.DB_PORT || '3306'),
+    waitForConnections: true,
+    connectionLimit: 10,
+    queueLimit: 0,
+    ssl: (process.env.MYSQLHOST || process.env.MYSQLPUBLICHOST) ? { rejectUnauthorized: false } : undefined
+  };
+};
+
+const dbPool = mysql.createPool(getDbConfig());
 
 // Initialize DB schema and seed on startup
 initializeDatabase().then(() => {

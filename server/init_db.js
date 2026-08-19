@@ -326,14 +326,19 @@ async function createTablesIfNotExist(connection) {
 
 export async function initializeDatabase() {
   try {
-    const connection = await mysql.createConnection({
-      host: process.env.MYSQLHOST || process.env.DB_HOST || 'localhost',
-      user: process.env.MYSQLUSER || process.env.DB_USER || 'root',
-      password: process.env.MYSQLPASSWORD || process.env.DB_PASSWORD || 'root',
-      database: process.env.MYSQLDATABASE || process.env.DB_NAME || 'kalpanaa_education_db',
-      port: parseInt(process.env.MYSQLPORT || process.env.DB_PORT || '3306'),
-      ssl: process.env.MYSQLHOST ? { rejectUnauthorized: false } : undefined
-    });
+    const connectionUrl = process.env.MYSQL_URL || process.env.DATABASE_URL || process.env.MYSQL_PRIVATE_URL;
+    const connConfig = connectionUrl
+      ? { uri: connectionUrl, ssl: { rejectUnauthorized: false } }
+      : {
+          host: process.env.MYSQLPUBLICHOST || process.env.MYSQLHOST || process.env.DB_HOST || 'localhost',
+          user: process.env.MYSQLUSER || process.env.DB_USER || 'root',
+          password: process.env.MYSQLPASSWORD || process.env.DB_PASSWORD || 'root',
+          database: process.env.MYSQLDATABASE || process.env.DB_NAME || 'kalpanaa_education_db',
+          port: parseInt(process.env.MYSQLPUBLICPORT || process.env.MYSQLPORT || process.env.DB_PORT || '3306'),
+          ssl: (process.env.MYSQLHOST || process.env.MYSQLPUBLICHOST) ? { rejectUnauthorized: false } : undefined
+        };
+
+    const connection = await mysql.createConnection(connConfig);
 
     console.log('🔌 Connected to MySQL server:', process.env.MYSQLDATABASE || 'kalpanaa_education_db');
     await createTablesIfNotExist(connection);
