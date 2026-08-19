@@ -20,20 +20,33 @@ async function createTablesIfNotExist(connection) {
       id VARCHAR(50) PRIMARY KEY,
       studentId VARCHAR(50) UNIQUE NOT NULL,
       rollNo VARCHAR(50),
+      registerNumber VARCHAR(100),
       name VARCHAR(150) NOT NULL,
       email VARCHAR(150) NOT NULL,
       password VARCHAR(255) NOT NULL,
       department VARCHAR(100) NOT NULL,
+      departmentCode VARCHAR(50),
       course VARCHAR(150),
-      semester INT DEFAULT 1,
-      section VARCHAR(10) DEFAULT 'A',
+      year VARCHAR(50) DEFAULT '1st Year',
+      semester VARCHAR(50) DEFAULT 'Semester 1',
+      section VARCHAR(10) DEFAULT 'Sec A',
       classId VARCHAR(100),
+      academicYear VARCHAR(50) DEFAULT '2026-2027',
+      overallAttendance VARCHAR(50) DEFAULT '90%',
+      attendanceNum INT DEFAULT 90,
+      gpa VARCHAR(20) DEFAULT '3.50',
+      pendingFees DECIMAL(10,2) DEFAULT 0.00,
       phone VARCHAR(20),
       dob VARCHAR(20),
       gender VARCHAR(10),
       bloodGroup VARCHAR(10),
       address TEXT,
-      admissionYear INT DEFAULT 2024,
+      bio TEXT,
+      guardianName VARCHAR(150),
+      guardianPhone VARCHAR(20),
+      avatar LONGTEXT,
+      photoUrl LONGTEXT,
+      admissionYear INT DEFAULT 2026,
       status VARCHAR(20) DEFAULT 'Active',
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;`,
@@ -49,9 +62,13 @@ async function createTablesIfNotExist(connection) {
       phone VARCHAR(20),
       qualification VARCHAR(100),
       experienceYears INT DEFAULT 5,
+      experience VARCHAR(50) DEFAULT '5 Years',
       joiningDate VARCHAR(20),
       specialization VARCHAR(150),
       assignedClasses TEXT,
+      bio TEXT,
+      avatar LONGTEXT,
+      photoUrl LONGTEXT,
       status VARCHAR(20) DEFAULT 'Active',
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;`,
@@ -70,9 +87,15 @@ async function createTablesIfNotExist(connection) {
       code VARCHAR(20) UNIQUE NOT NULL,
       name VARCHAR(150) NOT NULL,
       department VARCHAR(100) NOT NULL,
-      semester INT DEFAULT 1,
+      departmentCode VARCHAR(50),
+      semester VARCHAR(50) DEFAULT 'Semester 1',
+      year VARCHAR(50) DEFAULT '1st Year',
       credits INT DEFAULT 4,
       type VARCHAR(50) DEFAULT 'Core',
+      courseType VARCHAR(50) DEFAULT 'Core Theory',
+      assignedTeacherName VARCHAR(150),
+      academicYear VARCHAR(50) DEFAULT '2026-2027',
+      status VARCHAR(20) DEFAULT 'Active',
       syllabus TEXT
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;`,
 
@@ -81,7 +104,7 @@ async function createTablesIfNotExist(connection) {
       code VARCHAR(20) UNIQUE NOT NULL,
       name VARCHAR(150) NOT NULL,
       department VARCHAR(100) NOT NULL,
-      semester INT DEFAULT 1,
+      semester VARCHAR(50) DEFAULT 'Semester 1',
       credits INT DEFAULT 4
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;`,
 
@@ -117,12 +140,15 @@ async function createTablesIfNotExist(connection) {
 
     `CREATE TABLE IF NOT EXISTS faculty_class_assignments (
       id VARCHAR(100) PRIMARY KEY,
+      assignmentId VARCHAR(100),
       teacherId VARCHAR(50) NOT NULL,
       teacherName VARCHAR(150) NOT NULL,
       subjectCode VARCHAR(20) NOT NULL,
       subjectName VARCHAR(150) NOT NULL,
       department VARCHAR(100) NOT NULL,
-      semester INT NOT NULL,
+      departmentCode VARCHAR(50),
+      year VARCHAR(50) DEFAULT '1st Year',
+      semester VARCHAR(50) DEFAULT 'Semester 1',
       section VARCHAR(10) DEFAULT 'A',
       classId VARCHAR(100) NOT NULL,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -132,14 +158,21 @@ async function createTablesIfNotExist(connection) {
       id VARCHAR(50) PRIMARY KEY,
       name VARCHAR(150) NOT NULL,
       type VARCHAR(50) DEFAULT 'Internal Assessment',
-      semester INT DEFAULT 1,
+      semester VARCHAR(50) DEFAULT 'Semester 1',
       department VARCHAR(100),
+      course VARCHAR(150),
       subjectCode VARCHAR(20),
       subjectName VARCHAR(150),
+      assignedTeacherId VARCHAR(50),
       examDate VARCHAR(20),
+      date VARCHAR(20),
+      time VARCHAR(50),
+      room VARCHAR(100),
       maxMarks INT DEFAULT 100,
       weightage INT DEFAULT 20,
+      eligibilityAttendance INT DEFAULT 75,
       status VARCHAR(50) DEFAULT 'Scheduled',
+      isPublished INT DEFAULT 0,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;`,
 
@@ -321,6 +354,50 @@ async function createTablesIfNotExist(connection) {
 
   for (const sql of tableSchemas) {
     await connection.query(sql);
+  }
+
+  const columnMigrations = [
+    "ALTER TABLE students ADD COLUMN registerNumber VARCHAR(100)",
+    "ALTER TABLE students ADD COLUMN departmentCode VARCHAR(50)",
+    "ALTER TABLE students ADD COLUMN year VARCHAR(50) DEFAULT '1st Year'",
+    "ALTER TABLE students ADD COLUMN academicYear VARCHAR(50) DEFAULT '2026-2027'",
+    "ALTER TABLE students ADD COLUMN overallAttendance VARCHAR(50) DEFAULT '90%'",
+    "ALTER TABLE students ADD COLUMN attendanceNum INT DEFAULT 90",
+    "ALTER TABLE students ADD COLUMN gpa VARCHAR(20) DEFAULT '3.50'",
+    "ALTER TABLE students ADD COLUMN pendingFees DECIMAL(10,2) DEFAULT 0.00",
+    "ALTER TABLE students ADD COLUMN bio TEXT",
+    "ALTER TABLE students ADD COLUMN guardianName VARCHAR(150)",
+    "ALTER TABLE students ADD COLUMN guardianPhone VARCHAR(20)",
+    "ALTER TABLE students ADD COLUMN avatar LONGTEXT",
+    "ALTER TABLE students ADD COLUMN photoUrl LONGTEXT",
+    "ALTER TABLE teachers ADD COLUMN experience VARCHAR(50) DEFAULT '5 Years'",
+    "ALTER TABLE teachers ADD COLUMN bio TEXT",
+    "ALTER TABLE teachers ADD COLUMN avatar LONGTEXT",
+    "ALTER TABLE teachers ADD COLUMN photoUrl LONGTEXT",
+    "ALTER TABLE courses ADD COLUMN departmentCode VARCHAR(50)",
+    "ALTER TABLE courses ADD COLUMN year VARCHAR(50) DEFAULT '1st Year'",
+    "ALTER TABLE courses ADD COLUMN courseType VARCHAR(50) DEFAULT 'Core Theory'",
+    "ALTER TABLE courses ADD COLUMN assignedTeacherName VARCHAR(150)",
+    "ALTER TABLE courses ADD COLUMN academicYear VARCHAR(50) DEFAULT '2026-2027'",
+    "ALTER TABLE courses ADD COLUMN status VARCHAR(20) DEFAULT 'Active'",
+    "ALTER TABLE faculty_class_assignments ADD COLUMN departmentCode VARCHAR(50)",
+    "ALTER TABLE faculty_class_assignments ADD COLUMN year VARCHAR(50) DEFAULT '1st Year'",
+    "ALTER TABLE faculty_class_assignments ADD COLUMN assignmentId VARCHAR(100)",
+    "ALTER TABLE examinations ADD COLUMN course VARCHAR(150)",
+    "ALTER TABLE examinations ADD COLUMN assignedTeacherId VARCHAR(50)",
+    "ALTER TABLE examinations ADD COLUMN date VARCHAR(20)",
+    "ALTER TABLE examinations ADD COLUMN time VARCHAR(50)",
+    "ALTER TABLE examinations ADD COLUMN room VARCHAR(100)",
+    "ALTER TABLE examinations ADD COLUMN eligibilityAttendance INT DEFAULT 75",
+    "ALTER TABLE examinations ADD COLUMN isPublished INT DEFAULT 0"
+  ];
+
+  for (const mig of columnMigrations) {
+    try {
+      await connection.query(mig);
+    } catch (e) {
+      // Column already exists, ignore error
+    }
   }
 }
 
