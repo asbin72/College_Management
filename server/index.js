@@ -8,21 +8,9 @@ const app = express();
 const PORT = process.env.PORT || 5000;
 const JWT_SECRET = process.env.JWT_SECRET || 'kalpanaaa_super_secret_jwt_key_2026_prod';
 
-// CORS — allow any Vercel frontend and localhost dev
+// CORS — universal access for frontend and API clients
 app.use(cors({
-  origin: (origin, callback) => {
-    // Allow requests with no origin (mobile apps, curl, etc.)
-    if (!origin) return callback(null, true);
-    // Allow localhost in dev
-    if (origin.includes('localhost') || origin.includes('127.0.0.1')) return callback(null, true);
-    // Allow any vercel.app domain
-    if (origin.includes('.vercel.app')) return callback(null, true);
-    // Allow Railway itself
-    if (origin.includes('.railway.app') || origin.includes('.up.railway.app')) return callback(null, true);
-    // Allow custom FRONTEND_URL
-    if (process.env.FRONTEND_URL && origin === process.env.FRONTEND_URL) return callback(null, true);
-    return callback(new Error('CORS not allowed'), false);
-  },
+  origin: true,
   credentials: true
 }));
 app.use(express.json({ limit: '10mb' }));
@@ -1620,7 +1608,7 @@ app.get('/api/results/student/:studentId', async (req, res) => {
 // Start Express Server
 const PORT = process.env.PORT || 5000;
 if (!process.env.VERCEL) {
-  app.listen(PORT, () => {
+  app.listen(PORT, '0.0.0.0', () => {
     console.log(`🌐 Kalpanaaa Enterprise API Server running on port ${PORT}`);
   });
 }
