@@ -357,6 +357,11 @@ async function createTablesIfNotExist(connection) {
   }
 
   const columnMigrations = [
+    "ALTER TABLE students MODIFY COLUMN semester VARCHAR(50) DEFAULT 'Semester 1'",
+    "ALTER TABLE courses MODIFY COLUMN semester VARCHAR(50) DEFAULT 'Semester 1'",
+    "ALTER TABLE subjects MODIFY COLUMN semester VARCHAR(50) DEFAULT 'Semester 1'",
+    "ALTER TABLE faculty_class_assignments MODIFY COLUMN semester VARCHAR(50) DEFAULT 'Semester 1'",
+    "ALTER TABLE examinations MODIFY COLUMN semester VARCHAR(50) DEFAULT 'Semester 1'",
     "ALTER TABLE students ADD COLUMN registerNumber VARCHAR(100)",
     "ALTER TABLE students ADD COLUMN departmentCode VARCHAR(50)",
     "ALTER TABLE students ADD COLUMN year VARCHAR(50) DEFAULT '1st Year'",
