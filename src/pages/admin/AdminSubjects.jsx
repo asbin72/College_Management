@@ -242,7 +242,7 @@ export const AdminSubjects = () => {
                             {sub.subjectType || 'Core Theory'}
                           </span>
                         </td>
-                        <td className="p-3.5 font-semibold text-slate-800 whitespace-nowrap">{sub.assignedTeacherName || 'Faculty In-Charge'}</td>
+                        <td className="p-3.5 font-semibold text-slate-800 whitespace-nowrap">{sub.assignedTeacherName && sub.assignedTeacherName !== 'Faculty In-Charge' ? sub.assignedTeacherName : (teachers.find(t => t.department === sub.department)?.name || 'Unassigned Faculty')}</td>
                         <td className="p-3.5 whitespace-nowrap">
                           <span className={`px-2.5 py-0.5 rounded-full font-bold text-[10px] ${
                             sub.status === 'Active' || !sub.status ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'
