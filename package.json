@@ -11,18 +11,25 @@
   },
   "scripts": {
     "dev": "vite",
-    "start": "vite",
+    "start": "node server/index.js",
+    "start:client": "vite",
     "start:server": "node server/index.js",
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview"
   },
   "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "jsonwebtoken": "^9.0.2",
     "lucide-react": "^0.439.0",
+    "mysql2": "^3.9.8",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-router-dom": "^6.26.1",
-    "vite": "^5.4.21"
+    "vite": "^5.4.21",
+    "ws": "^8.18.0"
   },
   "devDependencies": {
     "@types/react": "^18.3.3",
