@@ -61,6 +61,16 @@ export const AdminTeachers = () => {
   const [allocationError, setAllocationError] = useState('');
   const [allocationSuccess, setAllocationSuccess] = useState('');
 
+  const rawSubjectsList = (subjectOfferings && subjectOfferings.length > 0) ? subjectOfferings : ((subjects && subjects.length > 0) ? subjects : courses);
+  const filteredSubjectsList = rawSubjectsList.filter(s => {
+    const sDeptCode = (s.departmentCode || (s.code ? String(s.code).split('-')[0] : '')).toUpperCase();
+    const formDeptCode = String(allocationForm.departmentCode || 'CSE').toUpperCase();
+    if (sDeptCode === formDeptCode) return true;
+    if (s.department && String(s.department).toLowerCase().includes(formDeptCode.toLowerCase())) return true;
+    return false;
+  });
+  const displaySubjectsList = filteredSubjectsList.length > 0 ? filteredSubjectsList : rawSubjectsList;
+
   // Modals
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingTeacher, setEditingTeacher] = useState(null);
@@ -386,20 +396,26 @@ export const AdminTeachers = () => {
                     <select
                       value={allocationForm.subjectCode}
                       onChange={e => {
-                        const sub = (subjectOfferings || []).find(s => s.subjectCode === e.target.value);
+                        const selectedCode = e.target.value;
+                        const sub = displaySubjectsList.find(s => (s.subjectCode || s.code) === selectedCode);
                         setAllocationForm({
                           ...allocationForm,
-                          subjectCode: e.target.value,
-                          subjectName: sub?.subjectName || 'Database Systems'
+                          subjectCode: selectedCode,
+                          subjectName: sub?.subjectName || sub?.name || selectedCode
                         });
                       }}
                       className="w-full p-2.5 bg-slate-50 border rounded-xl font-bold text-navy"
                     >
-                      {(subjectOfferings || []).filter(s => s.departmentCode === allocationForm.departmentCode).map(sub => (
-                        <option key={sub.id} value={sub.subjectCode}>
-                          [{sub.subjectCode}] {sub.subjectName} ({sub.semester})
-                        </option>
-                      ))}
+                      {displaySubjectsList.map(sub => {
+                        const subCode = sub.subjectCode || sub.code || sub.id;
+                        const subName = sub.subjectName || sub.name || 'Subject Course';
+                        const subSem = sub.semester || '5th Semester';
+                        return (
+                          <option key={sub.id || subCode} value={subCode}>
+                            [{subCode}] {subName} ({subSem})
+                          </option>
+                        );
+                      })}
                     </select>
                   </div>
 
