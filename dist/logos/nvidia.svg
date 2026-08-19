@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 50" width="130" height="34">
+  <!-- NVIDIA Eye/Claw Icon -->
+  <g fill="#76B900">
+    <path d="M28 8c-9.9 0-18 8.1-18 18s8.1 18 18 18c7.8 0 14.5-5 16.9-12h-6.4c-2 4.2-6.4 7.2-11.5 7.2-7 0-12.8-5.8-12.8-12.8S30 13.6 37 13.6c4.6 0 8.6 2.4 10.9 6h6.5C51.8 12.8 40.6 8 28 8z"/>
+    <path d="M28 17.5c-4.7 0-8.5 3.8-8.5 8.5s3.8 8.5 8.5 8.5c3.8 0 7-2.5 8.1-6h-5.8c-.8 1.4-2.3 2.3-4 2.3-2.6 0-4.7-2.1-4.7-4.7s2.1-4.7 4.7-4.7c1.9 0 3.5 1.1 4.2 2.7h5.8c-1.3-4-5-6.6-8.3-6.6z"/>
+  </g>
+  <!-- NVIDIA Text in White -->
+  <text x="60" y="34" fill="#FFFFFF" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="24" font-weight="800" letter-spacing="1px">NVIDIA</text>
+</svg>
