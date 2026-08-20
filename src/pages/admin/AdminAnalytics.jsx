@@ -141,34 +141,7 @@ export const AdminAnalytics = () => {
 
   const activeStaffCount = staff.filter(s => s.status === 'Active').length;
 
-  // Dept-wise student counts (Live from database)
-  const deptStudentCounts = departments.map(d => {
-    const count = users.filter(u => {
-      if (u.role !== 'STUDENT') return false;
-      if (u.departmentCode && d.code && u.departmentCode === d.code) return true;
-      return normStr(u.department) === normStr(d.name);
-    }).length;
-    return { name: d.name, code: d.code, count };
-  });
-
-  // Course-wise student counts (Live from database)
-  const courseStudentCounts = courses.map(c => {
-    const count = users.filter(u => {
-      if (u.role !== 'STUDENT') return false;
-      if (u.course === c.name || normStr(u.course) === normStr(c.name)) return true;
-      if (u.departmentCode && (c.code?.includes(u.departmentCode) || c.departmentCode === u.departmentCode)) return true;
-      if (c.code === 'BTECH-CE' && (u.departmentCode === 'CE' || u.department?.includes('Civil'))) return true;
-      return false;
-    }).length;
-    return { name: c.name, code: c.code, count };
-  });
-
-  // Semester-wise student counts (All 8 Semesters)
   const semestersList = ['Semester 1', 'Semester 2', 'Semester 3', 'Semester 4', 'Semester 5', 'Semester 6', 'Semester 7', 'Semester 8'];
-  const semStudentCounts = semestersList.map(sem => {
-    const count = users.filter(u => u.role === 'STUDENT' && (u.semester === sem || u.semester?.includes(sem.replace('Semester ', '')))).length;
-    return { sem, count };
-  });
 
   // Pass/Fail calculations
   const totalPublishedMarks = marksRecords.filter(m => m.published);
@@ -290,56 +263,7 @@ export const AdminAnalytics = () => {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              {/* Dept-wise students */}
-              <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 space-y-3">
-                <h3 className="text-sm font-serif font-bold text-navy">Department-wise Students</h3>
-                <div className="space-y-2.5 text-xs">
-                  {deptStudentCounts.map((d, i) => (
-                    <div key={i}>
-                      <div className="flex justify-between mb-1">
-                        <span className="font-semibold text-slate-700 truncate">{d.name}</span>
-                        <span className="font-bold text-navy">{d.count}</span>
-                      </div>
-                      <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
-                        <div className="bg-navy h-full rounded-full transition-all duration-500" style={{ width: `${Math.min(100, (d.count / 40) * 100)}%` }} />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
 
-              {/* Course-wise students */}
-              <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 space-y-3">
-                <h3 className="text-sm font-serif font-bold text-navy">Course-wise Students</h3>
-                <div className="space-y-2.5 text-xs">
-                  {courseStudentCounts.map((c, i) => (
-                    <div key={i}>
-                      <div className="flex justify-between mb-1">
-                        <span className="font-semibold text-slate-700 truncate">{c.name}</span>
-                        <span className="font-bold text-navy">{c.count}</span>
-                      </div>
-                      <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
-                        <div className="bg-gold h-full rounded-full transition-all duration-500" style={{ width: `${Math.min(100, (c.count / 40) * 100)}%` }} />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Semester-wise students */}
-              <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 space-y-3">
-                <h3 className="text-sm font-serif font-bold text-navy">Semester-wise Distribution</h3>
-                <div className="space-y-2 text-xs">
-                  {semStudentCounts.filter(s => s.count > 0).map((s, i) => (
-                    <div key={i} className="flex justify-between py-1 border-b border-slate-100">
-                      <span className="text-slate-600">{s.sem}</span>
-                      <span className="font-bold text-navy">{s.count} Students</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
           </div>
 
           {/* --- SECTION B: STAFF ANALYTICS --- */}
