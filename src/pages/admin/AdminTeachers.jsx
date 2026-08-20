@@ -118,7 +118,7 @@ export const AdminTeachers = () => {
       experience: '5+ Years',
       role: 'TEACHER',
       status: 'Active',
-      password: 'teacher123'
+      password: ''
     });
     setShowAddModal(true);
   };
@@ -490,12 +490,13 @@ export const AdminTeachers = () => {
               <button onClick={() => setShowAddModal(false)} className="text-slate-400 hover:text-navy"><X className="w-5 h-5" /></button>
             </div>
 
-            <form onSubmit={handleSaveAdd} className="space-y-3 text-xs">
+            <form onSubmit={handleSaveAdd} className="space-y-3 text-xs" autoComplete="off">
               <div>
                 <label className="block font-bold text-slate-700 mb-1">Faculty Full Name *</label>
                 <input 
                   required 
                   type="text" 
+                  autoComplete="off"
                   placeholder="e.g. Dr. Sunita Patel" 
                   value={formData.name || ''} 
                   className="w-full p-2.5 border rounded-xl focus:outline-none focus:border-gold font-bold text-navy" 
@@ -531,6 +532,7 @@ export const AdminTeachers = () => {
                   <input 
                     required 
                     type="email" 
+                    autoComplete="off"
                     placeholder="sunita.patel@kalpanaaa.edu" 
                     value={formData.email || ''} 
                     className="w-full p-2.5 border rounded-xl focus:outline-none focus:border-gold" 
@@ -591,7 +593,9 @@ export const AdminTeachers = () => {
                   <input 
                     required 
                     type="password" 
-                    value={formData.password || 'teacher123'} 
+                    autoComplete="new-password"
+                    placeholder="Enter password"
+                    value={formData.password || ''} 
                     className="w-full p-2.5 border rounded-xl font-num" 
                     onChange={e => setFormData({ ...formData, password: e.target.value })} 
                   />

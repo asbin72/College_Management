@@ -86,7 +86,9 @@ export const AdminControl = () => {
         username: nextId,
         role: 'TEACHER',
         status: 'Active',
-        password: 'teacher123',
+        name: '',
+        email: '',
+        password: '',
         department: departments[0]?.name || 'Computer Science and Engineering',
         designation: 'Assistant Professor'
       });
@@ -97,7 +99,9 @@ export const AdminControl = () => {
         username: nextStuId,
         role: 'STUDENT',
         status: 'Active',
-        password: 'student123',
+        name: '',
+        email: '',
+        password: '',
         department: departments[0]?.name || 'Computer Science and Engineering',
         course: courses[0]?.name || 'B.Tech Computer Science & Engineering',
         semester: 'Semester 1'
@@ -426,12 +430,13 @@ export const AdminControl = () => {
               <h3 className="font-serif font-bold text-lg text-navy">Add New Student Account</h3>
               <button onClick={closeModal} className="text-slate-400 hover:text-navy"><X className="w-5 h-5" /></button>
             </div>
-            <form onSubmit={handleCreateStudent} className="space-y-3 text-xs">
+            <form onSubmit={handleCreateStudent} className="space-y-3 text-xs" autoComplete="off">
               <div>
                 <label className="block font-bold text-slate-700 mb-1">Student Full Name *</label>
                 <input 
                   required 
                   type="text" 
+                  autoComplete="off"
                   placeholder="e.g. Vikram Sharma" 
                   value={formData.name || ''} 
                   className="w-full p-2.5 border rounded-lg focus:outline-none focus:border-gold" 
@@ -439,10 +444,10 @@ export const AdminControl = () => {
                     const name = e.target.value;
                     const cleanName = name.toLowerCase().trim().replace(/[^a-z0-9\s]/g, '');
                     const parts = cleanName.split(/\s+/).filter(Boolean);
-                    let baseEmail = parts.length >= 2 ? `${parts[0]}.${parts[parts.length - 1]}` : (parts[0] || 'student');
-                    let uniqueEmail = `${baseEmail}@kalpanaaa.edu`;
+                    let baseEmail = parts.length >= 2 ? `${parts[0]}.${parts[parts.length - 1]}` : (parts[0] || '');
+                    let uniqueEmail = baseEmail ? `${baseEmail}@kalpanaaa.edu` : '';
                     let counter = 1;
-                    while (users.some(u => u.email?.toLowerCase() === uniqueEmail.toLowerCase())) {
+                    while (uniqueEmail && users.some(u => u.email?.toLowerCase() === uniqueEmail.toLowerCase())) {
                       uniqueEmail = `${baseEmail}${counter}@kalpanaaa.edu`;
                       counter++;
                     }
@@ -475,6 +480,7 @@ export const AdminControl = () => {
                   <input 
                     required 
                     type="email" 
+                    autoComplete="off"
                     placeholder="student@kalpanaaa.edu" 
                     value={formData.email || ''} 
                     className="w-full p-2.5 border rounded-lg focus:outline-none focus:border-gold font-mono font-bold text-navy" 
@@ -502,7 +508,7 @@ export const AdminControl = () => {
                 </div>
                 <div>
                   <label className="block font-bold text-slate-700 mb-1">Login Password</label>
-                  <input required type="password" placeholder="student123" className="w-full p-2.5 border rounded-lg" onChange={e => setFormData({ ...formData, password: e.target.value })} />
+                  <input required type="password" autoComplete="new-password" value={formData.password || ''} placeholder="Enter password" className="w-full p-2.5 border rounded-lg" onChange={e => setFormData({ ...formData, password: e.target.value })} />
                 </div>
               </div>
               <div className="flex justify-end gap-2 pt-3 border-t">
@@ -521,12 +527,13 @@ export const AdminControl = () => {
               <h3 className="font-serif font-bold text-lg text-navy">Register New Faculty Staff</h3>
               <button onClick={closeModal} className="text-slate-400 hover:text-navy"><X className="w-5 h-5" /></button>
             </div>
-            <form onSubmit={handleCreateTeacher} className="space-y-3 text-xs">
+            <form onSubmit={handleCreateTeacher} className="space-y-3 text-xs" autoComplete="off">
               <div>
                 <label className="block font-bold text-slate-700 mb-1">Faculty Full Name *</label>
                 <input 
                   required 
                   type="text" 
+                  autoComplete="off"
                   placeholder="e.g. Dr. Sunita Patel" 
                   value={formData.name || ''} 
                   className="w-full p-2.5 border rounded-lg focus:outline-none focus:border-gold" 
@@ -561,6 +568,7 @@ export const AdminControl = () => {
                   <input 
                     required 
                     type="email" 
+                    autoComplete="off"
                     placeholder="sunita.patel@kalpanaaa.edu" 
                     value={formData.email || ''} 
                     className="w-full p-2.5 border rounded-lg focus:outline-none focus:border-gold" 
@@ -583,7 +591,7 @@ export const AdminControl = () => {
               </div>
               <div>
                 <label className="block font-bold text-slate-700 mb-1">Password</label>
-                <input required type="password" placeholder="teacher123" className="w-full p-2.5 border rounded-lg" onChange={e => setFormData({ ...formData, password: e.target.value })} />
+                <input required type="password" autoComplete="new-password" value={formData.password || ''} placeholder="Enter password" className="w-full p-2.5 border rounded-lg" onChange={e => setFormData({ ...formData, password: e.target.value })} />
               </div>
               <div className="flex justify-end gap-2 pt-3 border-t">
                 <button type="button" onClick={closeModal} className="px-4 py-2 text-slate-600 font-semibold">Cancel</button>
