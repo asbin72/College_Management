@@ -370,23 +370,7 @@ export const AdminStudents = () => {
                   placeholder="e.g. Vikram Sharma" 
                   value={formData.name || ''} 
                   className="w-full p-2.5 border rounded-lg focus:outline-none focus:border-gold" 
-                  onChange={e => {
-                    const name = e.target.value;
-                    const cleanName = name.toLowerCase().trim().replace(/[^a-z0-9\s]/g, '');
-                    const parts = cleanName.split(/\s+/).filter(Boolean);
-                    let baseEmail = parts.length >= 2 ? `${parts[0]}.${parts[parts.length - 1]}` : (parts[0] || '');
-                    let uniqueEmail = baseEmail ? `${baseEmail}@kalpanaaa.edu` : '';
-                    let counter = 1;
-                    while (uniqueEmail && users.some(u => u.email?.toLowerCase() === uniqueEmail.toLowerCase())) {
-                      uniqueEmail = `${baseEmail}${counter}@kalpanaaa.edu`;
-                      counter++;
-                    }
-                    setFormData({ 
-                      ...formData, 
-                      name, 
-                      email: formData.userEditedEmail ? formData.email : uniqueEmail 
-                    });
-                  }} 
+                  onChange={e => setFormData({ ...formData, name: e.target.value })} 
                 />
               </div>
               <div className="grid grid-cols-2 gap-3">
@@ -403,10 +387,7 @@ export const AdminStudents = () => {
                   />
                 </div>
                 <div>
-                  <label className="block font-bold text-slate-700 mb-1 flex items-center justify-between">
-                    <span>Email Address *</span>
-                    <span className="text-[9px] font-bold uppercase tracking-wider text-blue-700 bg-blue-100 px-1.5 py-0.5 rounded">AUTO-GENERATED</span>
-                  </label>
+                  <label className="block font-bold text-slate-700 mb-1">Email Address *</label>
                   <input 
                     required 
                     type="email" 
@@ -414,7 +395,7 @@ export const AdminStudents = () => {
                     placeholder="student@kalpanaaa.edu" 
                     value={formData.email || ''} 
                     className="w-full p-2.5 border rounded-lg focus:outline-none focus:border-gold font-mono font-bold text-navy" 
-                    onChange={e => setFormData({ ...formData, email: e.target.value, userEditedEmail: true })} 
+                    onChange={e => setFormData({ ...formData, email: e.target.value })} 
                   />
                 </div>
               </div>

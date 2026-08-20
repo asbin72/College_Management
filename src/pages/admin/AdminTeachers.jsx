@@ -500,17 +500,7 @@ export const AdminTeachers = () => {
                   placeholder="e.g. Dr. Sunita Patel" 
                   value={formData.name || ''} 
                   className="w-full p-2.5 border rounded-xl focus:outline-none focus:border-gold font-bold text-navy" 
-                  onChange={e => {
-                    const name = e.target.value;
-                    const cleanName = name.toLowerCase().replace(/^(dr\.|prof\.|mr\.|ms\.|mrs\.)\s+/i, '').trim();
-                    const parts = cleanName.split(/\s+/).filter(Boolean);
-                    const suggestedEmail = parts.length >= 2 ? `${parts[0]}.${parts[parts.length - 1]}@kalpanaaa.edu` : (parts[0] ? `${parts[0]}@kalpanaaa.edu` : '');
-                    setFormData({ 
-                      ...formData, 
-                      name, 
-                      email: formData.userEditedEmail ? formData.email : suggestedEmail 
-                    });
-                  }} 
+                  onChange={e => setFormData({ ...formData, name: e.target.value })} 
                 />
               </div>
 
@@ -536,7 +526,7 @@ export const AdminTeachers = () => {
                     placeholder="sunita.patel@kalpanaaa.edu" 
                     value={formData.email || ''} 
                     className="w-full p-2.5 border rounded-xl focus:outline-none focus:border-gold" 
-                    onChange={e => setFormData({ ...formData, email: e.target.value, userEditedEmail: true })} 
+                    onChange={e => setFormData({ ...formData, email: e.target.value })} 
                   />
                 </div>
               </div>
