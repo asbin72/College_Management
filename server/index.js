@@ -743,6 +743,48 @@ app.delete('/api/courses/:id', async (req, res) => {
   }
 });
 
+// --- SUBJECTS ENDPOINTS ---
+app.get('/api/subjects', async (req, res) => {
+  try {
+    const [rows] = await dbPool.query('SELECT * FROM subjects ORDER BY code ASC');
+    if (rows.length > 0) {
+      return res.json(rows);
+    }
+    // Fallback to courses if subjects table is empty
+    const [courseRows] = await dbPool.query('SELECT id, code, name, department, semester, credits FROM courses ORDER BY code ASC');
+    res.json(courseRows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/subjects', async (req, res) => {
+  const s = req.body;
+  const id = s.id || `sub-${Date.now()}`;
+  try {
+    await dbPool.query(`
+      INSERT INTO subjects (id, code, name, department, semester, credits)
+      VALUES (?, ?, ?, ?, ?, ?)
+      ON DUPLICATE KEY UPDATE name = VALUES(name), department = VALUES(department), credits = VALUES(credits)
+    `, [id, s.code, s.name, s.department || 'Computer Science & Engineering', s.semester || 'Semester 1', Number(s.credits || 4)]);
+    broadcastRealTimeEvent('SUBJECT_ADDED', { id, code: s.code, name: s.name });
+    res.json({ success: true, id, message: 'Subject created in database.' });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.delete('/api/subjects/:id', async (req, res) => {
+  const { id } = req.params;
+  try {
+    await dbPool.query('DELETE FROM subjects WHERE id = ? OR code = ?', [id, id]);
+    broadcastRealTimeEvent('SUBJECT_DELETED', { id });
+    res.json({ success: true, message: `Subject ${id} deleted from database.` });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // --- ADMISSIONS APPLICATION ENDPOINTS WITH MYSQL STORAGE & DYNAMIC AGE CALCULATION ---
 app.get('/api/admissions/applications', async (req, res) => {
   try {
