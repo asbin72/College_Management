@@ -71,6 +71,7 @@ import { AdminStudents } from './pages/admin/AdminStudents';
 import { AdminTeachers } from './pages/admin/AdminTeachers';
 import { AdminDepartments } from './pages/admin/AdminDepartments';
 import { AdminCourses } from './pages/admin/AdminCourses';
+import { AdminCourseSubjects } from './pages/admin/AdminCourseSubjects';
 import { AdminSubjects } from './pages/admin/AdminSubjects';
 import { AdminAttendance } from './pages/admin/AdminAttendance';
 import { AdminExams } from './pages/admin/AdminExams';
@@ -219,6 +220,7 @@ function AppRoutes() {
         <Route path="/admin/teachers" element={<RoleGuard allowedRoles={['ADMIN']}><AdminTeachers /></RoleGuard>} />
         <Route path="/admin/departments" element={<RoleGuard allowedRoles={['ADMIN']}><AdminDepartments /></RoleGuard>} />
         <Route path="/admin/courses" element={<RoleGuard allowedRoles={['ADMIN']}><AdminCourses /></RoleGuard>} />
+        <Route path="/admin/courses/:courseId/subjects" element={<RoleGuard allowedRoles={['ADMIN']}><AdminCourseSubjects /></RoleGuard>} />
         <Route path="/admin/subjects" element={<Navigate to="/admin/courses" replace />} />
         <Route path="/admin/attendance" element={<RoleGuard allowedRoles={['ADMIN']}><AdminAttendance /></RoleGuard>} />
         <Route path="/admin/exams" element={<RoleGuard allowedRoles={['ADMIN']}><AdminExams /></RoleGuard>} />

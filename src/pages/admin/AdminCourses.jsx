@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useData } from '../../context/DataContext';
 import { PortalHeader } from '../../components/portal/PortalHeader';
 import { Sidebar } from '../../components/portal/Sidebar';
-import { Plus, Edit, Power, Trash2, Search, X, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react';
+import { Plus, Edit, Power, Trash2, Search, X, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, BookOpen } from 'lucide-react';
 import { INITIAL_COURSES } from '../../data/initialMockData';
 
 export const AdminCourses = () => {
@@ -275,6 +276,14 @@ export const AdminCourses = () => {
                         </td>
                         <td className="p-3.5 text-center whitespace-nowrap">
                           <div className="flex items-center justify-center gap-1.5">
+                            <Link
+                              to={`/admin/courses/${crs.id || crs.code}/subjects`}
+                              className="p-1.5 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-lg transition flex items-center gap-1 font-bold text-[11px]"
+                              title="Manage Course Subjects & Timetable"
+                            >
+                              <BookOpen className="w-3.5 h-3.5 text-blue-600" />
+                              <span>View Subjects</span>
+                            </Link>
                             <button
                               onClick={() => openEditModal(crs)}
                               className="p-1.5 bg-amber-50 text-amber-700 hover:bg-amber-100 rounded-lg transition"

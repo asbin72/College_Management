@@ -105,7 +105,31 @@ export const StudentDashboard = () => {
 
   const myCurriculumSubjects = deptSubjects.length > 0 ? deptSubjects : fallbackSubjects;
 
-  // ── Dynamic: derive timetable slots from subjectOfferings or use sensible fallback labels ──
+  const [liveTodaySubjects, setLiveTodaySubjects] = useState(null);
+
+  React.useEffect(() => {
+    async function fetchTodaySubjects() {
+      try {
+        const getApiBase = () => {
+          if (import.meta.env.VITE_API_BASE) return import.meta.env.VITE_API_BASE;
+          if (typeof window !== 'undefined' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+            return 'https://collegemanagement-production.up.railway.app/api';
+          }
+          return 'http://localhost:5000/api';
+        };
+        const res = await fetch(`${getApiBase()}/students/${studentCode}/today-subjects`);
+        if (res.ok) {
+          const data = await res.json();
+          if (Array.isArray(data.todaySubjects) && data.todaySubjects.length > 0) {
+            setLiveTodaySubjects(data.todaySubjects);
+          }
+        }
+      } catch (e) {}
+    }
+    if (studentCode) fetchTodaySubjects();
+  }, [studentCode]);
+
+  // ── Dynamic: derive timetable slots from subjectOfferings or live timetable slots ──
   const PERIOD_LABELS = [
     '08:30 AM – 09:20 AM',
     '09:20 AM – 10:10 AM',
@@ -117,19 +141,26 @@ export const StudentDashboard = () => {
     '03:30 PM – 04:20 PM',
   ];
 
-  const scheduleList = myCurriculumSubjects.slice(0, 4).map((sub, idx) => {
-    // Use schedule fields from subject data if available, else use period label
-    const time = sub.scheduleTime || sub.time || PERIOD_LABELS[idx % PERIOD_LABELS.length];
-    const room = sub.room || sub.venue || sub.hall || `${studentDeptCode} Lecture Hall ${101 + idx}`;
-    const statusOptions = ['Completed', 'Ongoing', 'Upcoming', 'Upcoming'];
-    return {
-      time,
-      subject: `${sub.code} - ${sub.name}`,
-      room,
-      teacher: sub.assignedTeacherName || 'Department Faculty',
-      status: statusOptions[idx] || 'Upcoming'
-    };
-  });
+  const scheduleList = (liveTodaySubjects && liveTodaySubjects.length > 0)
+    ? liveTodaySubjects.map((slot, idx) => ({
+        time: `${slot.startTime || '09:00 AM'} – ${slot.endTime || '10:00 AM'}`,
+        subject: `${slot.subjectCode} - ${slot.subjectName}`,
+        room: slot.room || 'Lecture Hall',
+        teacher: slot.teacherName || 'Faculty In-Charge',
+        status: idx === 0 ? 'Ongoing' : 'Upcoming'
+      }))
+    : myCurriculumSubjects.slice(0, 4).map((sub, idx) => {
+        const time = sub.scheduleTime || sub.time || PERIOD_LABELS[idx % PERIOD_LABELS.length];
+        const room = sub.room || sub.venue || sub.hall || `${studentDeptCode} Lecture Hall ${101 + idx}`;
+        const statusOptions = ['Completed', 'Ongoing', 'Upcoming', 'Upcoming'];
+        return {
+          time,
+          subject: `${sub.code} - ${sub.name}`,
+          room,
+          teacher: sub.assignedTeacherName || 'Department Faculty',
+          status: statusOptions[idx] || 'Upcoming'
+        };
+      });
 
   const nextLecture = scheduleList[0] || null;
 

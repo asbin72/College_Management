@@ -20,6 +20,28 @@ export const TeacherDashboard = () => {
   const teacherId = currentFacultyId;
   const teacherDept = currentUser.department || 'Computer Science and Engineering';
 
+  const [liveSummary, setLiveSummary] = useState(null);
+
+  React.useEffect(() => {
+    async function fetchSummary() {
+      try {
+        const getApiBase = () => {
+          if (import.meta.env.VITE_API_BASE) return import.meta.env.VITE_API_BASE;
+          if (typeof window !== 'undefined' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+            return 'https://collegemanagement-production.up.railway.app/api';
+          }
+          return 'http://localhost:5000/api';
+        };
+        const res = await fetch(`${getApiBase()}/teachers/${teacherId}/dashboard-summary`);
+        if (res.ok) {
+          const data = await res.json();
+          setLiveSummary(data);
+        }
+      } catch (e) {}
+    }
+    if (teacherId) fetchSummary();
+  }, [teacherId]);
+
   // Get all assignments for this faculty (or fallback for demo teacher)
   const myAssignments = facultyClassAssignments.filter(
     fca => fca.facultyId === teacherId || fca.facultyName === teacherName
@@ -286,7 +308,22 @@ export const TeacherDashboard = () => {
                 <Clock className="w-4 h-4 text-gold mr-2" /> Today's Lecture Timetable
               </h3>
               <div className="space-y-3">
-                {activeAssignments.length === 0 ? (
+                {liveSummary && Array.isArray(liveSummary.todayClasses) && liveSummary.todayClasses.length > 0 ? (
+                  liveSummary.todayClasses.map((slot, idx) => (
+                    <div key={idx} className="p-3.5 bg-slate-50 border rounded-xl flex justify-between items-center text-xs">
+                      <div>
+                        <span className="font-bold text-navy block">{slot.subjectCode} - {slot.subjectName}</span>
+                        <span className="text-slate-500 font-serif text-[11px]">{slot.department} &bull; {slot.semester} (Sec {slot.section})</span>
+                      </div>
+                      <div className="text-right">
+                        <span className="font-mono font-bold text-gold bg-navy px-2 py-0.5 rounded text-[11px]">
+                          {slot.period} &bull; {slot.startTime} - {slot.endTime}
+                        </span>
+                        <span className="text-[10px] text-slate-400 block mt-0.5">{slot.room || 'Room 101'}</span>
+                      </div>
+                    </div>
+                  ))
+                ) : activeAssignments.length === 0 ? (
                   <p className="text-xs text-slate-400 text-center py-4">No classes assigned yet.</p>
                 ) : (
                   activeAssignments.map((fca, idx) => {
