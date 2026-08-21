@@ -74,9 +74,10 @@ export const AdminStudents = () => {
   const paginatedStudents = sortedStudents.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
 
   const generateNextStudentId = () => {
-    const studentUsers = users.filter(u => u.role === 'STUDENT');
+    const studentUsers = (users || []).filter(u => u && u.role === 'STUDENT');
     let maxNum = 262;
     studentUsers.forEach(u => {
+      if (!u) return;
       const match = String(u.studentId || u.username || '').match(/STU-(?:\d{4}-)?(\d+)/i) || String(u.studentId || u.username || '').match(/(\d+)/);
       if (match) {
         const num = parseInt(match[1], 10);

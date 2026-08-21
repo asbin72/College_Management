@@ -26,36 +26,37 @@ export const AdminControl = () => {
   const [formData, setFormData] = useState({});
 
   // Filtered User metrics
-  const students = users.filter(u => u.role === 'STUDENT' || (u.studentId && String(u.studentId).startsWith('STU')));
-  const activeStudents = students.filter(u => u.status !== 'Inactive' && u.status !== 'Suspended');
-  const teachers = users.filter(u => u.role === 'TEACHER' || u.role === 'STAFF' || u.role === 'FACULTY' || (u.employeeId && String(u.employeeId).startsWith('EMP')));
-  const pendingLeaves = leaveRequests.filter(l => l.status === 'Pending');
-  const upcomingExams = examinations.filter(e => !e.isPublished && e.status !== 'Results Published');
-  const pendingExamTasks = examinations.filter(e => e.status === 'Marks Pending' || e.status === 'Marks Submitted');
-  const publishedExamsCount = examinations.filter(e => e.isPublished || e.status === 'Results Published' || e.published).length;
-  const totalSubjectsCount = (subjectOfferings && subjectOfferings.length > 0) ? subjectOfferings.length : subjects.length;
+  const students = (users || []).filter(u => u && (u.role === 'STUDENT' || (u.studentId && String(u.studentId).startsWith('STU'))));
+  const activeStudents = students.filter(u => u && u.status !== 'Inactive' && u.status !== 'Suspended');
+  const teachers = (users || []).filter(u => u && (u.role === 'TEACHER' || u.role === 'STAFF' || u.role === 'FACULTY' || (u.employeeId && String(u.employeeId).startsWith('EMP'))));
+  const pendingLeaves = (leaveRequests || []).filter(l => l && l.status === 'Pending');
+  const upcomingExams = (examinations || []).filter(e => e && !e.isPublished && e.status !== 'Results Published');
+  const pendingExamTasks = (examinations || []).filter(e => e && (e.status === 'Marks Pending' || e.status === 'Marks Submitted'));
+  const publishedExamsCount = (examinations || []).filter(e => e && (e.isPublished || e.status === 'Results Published' || e.published)).length;
+  const totalSubjectsCount = (subjectOfferings && subjectOfferings.length > 0) ? subjectOfferings.length : (subjects ? subjects.length : 0);
 
   const todayStr = new Date().toISOString().split('T')[0];
-  const todayAttendanceLogs = attendance.filter(a => a.date === todayStr);
-  const latestDateInLogs = attendance.length > 0
-    ? Array.from(new Set(attendance.map(a => a.date))).sort().reverse()[0]
+  const todayAttendanceLogs = (attendance || []).filter(a => a && a.date === todayStr);
+  const latestDateInLogs = (attendance && attendance.length > 0)
+    ? Array.from(new Set(attendance.filter(Boolean).map(a => a.date))).sort().reverse()[0]
     : todayStr;
 
   const sessionAttendance = todayAttendanceLogs.length > 0
     ? todayAttendanceLogs
-    : (latestDateInLogs ? attendance.filter(a => a.date === latestDateInLogs) : attendance);
+    : (latestDateInLogs ? (attendance || []).filter(a => a && a.date === latestDateInLogs) : (attendance || []));
 
-  const presentTodayCount = sessionAttendance.filter(a => a.status === 'Present').length;
-  const absentTodayCount = sessionAttendance.filter(a => a.status === 'Absent').length;
+  const presentTodayCount = sessionAttendance.filter(a => a && a.status === 'Present').length;
+  const absentTodayCount = sessionAttendance.filter(a => a && a.status === 'Absent').length;
   const cohortCount = (facultyClassAssignments && facultyClassAssignments.length > 0)
     ? facultyClassAssignments.length
     : (subjectOfferings && subjectOfferings.length > 0)
     ? subjectOfferings.length
-    : (new Set(attendance.map(a => a.subjectCode || a.classId)).size || 0);
+    : (new Set((attendance || []).filter(Boolean).map(a => a.subjectCode || a.classId)).size || 0);
 
   const generateNextEmployeeId = () => {
     let maxNum = 100;
     teachers.forEach(t => {
+      if (!t) return;
       const emp = String(t.employeeId || t.username || '');
       const m = emp.match(/EMP-(\d+)/i);
       if (m) {
@@ -67,9 +68,10 @@ export const AdminControl = () => {
   };
 
   const generateNextStudentId = () => {
-    const studentUsers = users.filter(u => u.role === 'STUDENT');
+    const studentUsers = (users || []).filter(u => u && u.role === 'STUDENT');
     let maxNum = 262;
     studentUsers.forEach(u => {
+      if (!u) return;
       const match = String(u.studentId || u.username || '').match(/STU-(?:\d{4}-)?(\d+)/i) || String(u.studentId || u.username || '').match(/(\d+)/);
       if (match) {
         const num = parseInt(match[1], 10);

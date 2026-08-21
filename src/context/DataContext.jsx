@@ -88,14 +88,14 @@ export const DataProvider = ({ children }) => {
   const [teacherAttendance, setTeacherAttendance] = useState(() => {
     const cached = safeLoadStorage('kalpanaaa_data_teacher_attendance_v5', null);
     if (Array.isArray(cached) && cached.length > 0) return cached;
-    const faculty = INITIAL_USERS.filter(u => u.role === 'TEACHER' || u.role === 'STAFF');
+    const faculty = INITIAL_USERS.filter(u => u && (u.role === 'TEACHER' || u.role === 'STAFF'));
     const dates = ['2026-08-15', '2026-08-14', '2026-08-13'];
     const logs = [];
-    faculty.forEach(t => {
+    faculty.filter(Boolean).forEach(t => {
       dates.forEach(date => {
         logs.push({
-          id: `tatt-${t.id}-${date}`,
-          teacherId: t.employeeId || t.id,
+          id: `tatt-${t?.id || Math.random()}-${date}`,
+          teacherId: t?.employeeId || t?.id || 'EMP-101',
           teacherName: t.name,
           department: t.department || 'Computer Science and Engineering',
           designation: t.designation || 'Faculty Member',
@@ -299,24 +299,28 @@ export const DataProvider = ({ children }) => {
         }
 
         if (stdRes.status === 'fulfilled' && Array.isArray(stdRes.value)) {
-          const teachers = (tchRes.status === 'fulfilled' && Array.isArray(tchRes.value) ? tchRes.value : []).map(t => ({
-            ...t,
-            role: 'TEACHER',
-            employeeId: t.employeeId || t.id,
-            status: t.status || 'Active'
-          }));
-          const students = stdRes.value.map(s => ({
-            ...s,
-            role: 'STUDENT',
-            studentId: s.studentId || s.id,
-            status: s.status || 'Active'
-          }));
+          const teachers = (tchRes.status === 'fulfilled' && Array.isArray(tchRes.value) ? tchRes.value : [])
+            .filter(Boolean)
+            .map(t => ({
+              ...t,
+              role: 'TEACHER',
+              employeeId: t?.employeeId || t?.id || 'EMP-101',
+              status: t?.status || 'Active'
+            }));
+          const students = (stdRes.value || [])
+            .filter(Boolean)
+            .map(s => ({
+              ...s,
+              role: 'STUDENT',
+              studentId: s?.studentId || s?.id || 'STU-101',
+              status: s?.status || 'Active'
+            }));
 
           setUsers(prev => {
-            const adminUsers = prev.filter(u => u.role === 'ADMIN');
-            const fallbackAdmins = adminUsers.length > 0 ? adminUsers : INITIAL_USERS.filter(u => u.role === 'ADMIN');
-            const facultyPool = teachers.length > 0 ? teachers : INITIAL_USERS.filter(u => u.role === 'TEACHER');
-            return [...fallbackAdmins, ...facultyPool, ...students];
+            const adminUsers = (prev || []).filter(u => u && u.role === 'ADMIN');
+            const fallbackAdmins = adminUsers.length > 0 ? adminUsers : INITIAL_USERS.filter(u => u && u.role === 'ADMIN');
+            const facultyPool = teachers.length > 0 ? teachers : INITIAL_USERS.filter(u => u && u.role === 'TEACHER');
+            return [...fallbackAdmins, ...facultyPool, ...students].filter(Boolean);
           });
         }
         if (attRes.status === 'fulfilled' && Array.isArray(attRes.value) && attRes.value.length > 0) {

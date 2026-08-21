@@ -62,18 +62,26 @@ export const generateFacultyAndAssignments = (offerings = []) => {
   let asnIdx = 1;
 
   currentOfferings.forEach((offering) => {
-    // Find matching teacher
+    // Find matching teacher with safe fallback
     const matchingTeacher = facultyList.find(f => 
-      (offering.assignedTeacherId && (f.employeeId === offering.assignedTeacherId || f.id === offering.assignedTeacherId)) ||
-      (offering.assignedTeacherName && f.name === offering.assignedTeacherName) ||
-      (f.department && offering.department && f.department.toLowerCase().includes(offering.department.toLowerCase()))
-    ) || facultyList[0];
+      f && (
+        (offering.assignedTeacherId && (f.employeeId === offering.assignedTeacherId || f.id === offering.assignedTeacherId)) ||
+        (offering.assignedTeacherName && f.name === offering.assignedTeacherName) ||
+        (f.department && offering.department && f.department.toLowerCase().includes(offering.department.toLowerCase()))
+      )
+    ) || facultyList[0] || {
+      id: 'EMP-101',
+      employeeId: 'EMP-101',
+      name: 'Faculty Staff',
+      department: offering.department || 'Computer Science and Engineering',
+      designation: 'Faculty Member'
+    };
 
-    const classId = `CLS-${offering.departmentCode || 'ENG'}-${offering.year.charAt(0)}-${offering.semester.replace(/\s+/g, '').toUpperCase()}-${offering.code.replace(/[^a-zA-Z0-9]/g, '')}`;
+    const classId = `CLS-${offering.departmentCode || 'ENG'}-${offering.year ? offering.year.charAt(0) : '1'}-${(offering.semester || 'Sem 1').replace(/\s+/g, '').toUpperCase()}-${(offering.code || 'SUB').replace(/[^a-zA-Z0-9]/g, '')}`;
 
     const offeringDeptCode = offering.departmentCode || 'CSE';
     const studentsInCohort = INITIAL_USERS.filter(u =>
-      u.role === 'STUDENT' && (
+      u && u.role === 'STUDENT' && (
         !offeringDeptCode || !u.departmentCode || u.departmentCode.toUpperCase() === offeringDeptCode.toUpperCase()
       )
     ).length;

@@ -37,12 +37,14 @@ export const AdminTeachers = () => {
     return deptName;
   };
 
-  const teachers = users.filter(u => 
-    u.role === 'TEACHER' || 
-    u.role === 'STAFF' || 
-    u.role === 'FACULTY' || 
-    (u.employeeId && String(u.employeeId).startsWith('EMP')) || 
-    (u.role !== 'ADMIN' && u.role !== 'STUDENT' && u.designation)
+  const teachers = (users || []).filter(u => 
+    u && (
+      u.role === 'TEACHER' || 
+      u.role === 'STAFF' || 
+      u.role === 'FACULTY' || 
+      (u.employeeId && String(u.employeeId).startsWith('EMP')) || 
+      (u.role !== 'ADMIN' && u.role !== 'STUDENT' && u.designation)
+    )
   );
 
   const [activeTab, setActiveTab] = useState('roster'); // 'roster' | 'allocation'
@@ -64,6 +66,7 @@ export const AdminTeachers = () => {
 
   const rawSubjectsList = (subjectOfferings && subjectOfferings.length > 0) ? subjectOfferings : ((subjects && subjects.length > 0) ? subjects : courses);
   const filteredSubjectsList = rawSubjectsList.filter(s => {
+    if (!s) return false;
     const sDeptCode = (s.departmentCode || (s.code ? String(s.code).split('-')[0] : '')).toUpperCase();
     const formDeptCode = String(allocationForm.departmentCode || 'CSE').toUpperCase();
     if (sDeptCode === formDeptCode) return true;
@@ -81,6 +84,7 @@ export const AdminTeachers = () => {
   const [formData, setFormData] = useState({});
 
   const filteredTeachers = teachers.filter(t => {
+    if (!t) return false;
     const term = searchTerm.toLowerCase();
     const matchesSearch = (
       (t.name && t.name.toLowerCase().includes(term)) ||
@@ -96,6 +100,7 @@ export const AdminTeachers = () => {
   const openAddModal = () => {
     let maxNum = 100;
     teachers.forEach(t => {
+      if (!t) return;
       const emp = String(t.employeeId || t.username || '');
       const m = emp.match(/EMP-(\d+)/i);
       if (m) {
