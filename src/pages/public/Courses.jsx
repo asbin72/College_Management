@@ -5,14 +5,21 @@ import { useData } from '../../context/DataContext';
 import { Search, Award, Sparkles, ArrowRight, ShieldCheck } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
+import { INITIAL_COURSES } from '../../data/initialMockData';
+
 export const Courses = () => {
   const { courses } = useData();
   const [search, setSearch] = useState('');
   const [deptFilter, setDeptFilter] = useState('ALL');
   const [levelFilter, setLevelFilter] = useState('ALL');
 
-  const filteredCourses = (courses || []).filter(course => {
-    const matchesSearch = (course.name || '').toLowerCase().includes(search.toLowerCase()) || (course.code || '').toLowerCase().includes(search.toLowerCase());
+  const displayCourses = (courses && courses.length > 0 && courses[0].subjects) ? courses : INITIAL_COURSES;
+
+  const filteredCourses = (displayCourses || []).filter(course => {
+    const subjectsStr = Array.isArray(course.subjects) ? course.subjects.join(' ') : '';
+    const matchesSearch = (course.name || '').toLowerCase().includes(search.toLowerCase()) || 
+                          (course.code || '').toLowerCase().includes(search.toLowerCase()) ||
+                          subjectsStr.toLowerCase().includes(search.toLowerCase());
     const matchesDept = deptFilter === 'ALL' || (course.department || '').toLowerCase().includes(deptFilter.toLowerCase());
     const courseLevel = (course.level || course.type || '').toLowerCase();
     const matchesLevel = levelFilter === 'ALL' || courseLevel.includes(levelFilter.toLowerCase());

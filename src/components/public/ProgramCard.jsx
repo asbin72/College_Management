@@ -63,6 +63,27 @@ export const ProgramCard = ({ course }) => {
             <Star className="w-3.5 h-3.5 text-gold mr-1.5 flex-shrink-0 mt-0.5" />
             <span className="line-clamp-1">{meritSummary}</span>
           </div>
+
+          {/* Key Curriculum Subjects List */}
+          {course.subjects && Array.isArray(course.subjects) && course.subjects.length > 0 && (
+            <div className="pt-1">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1">
+                Curriculum Subjects:
+              </span>
+              <div className="flex flex-wrap gap-1">
+                {course.subjects.slice(0, 4).map((sub, idx) => (
+                  <span key={idx} className="bg-slate-100 text-navy font-semibold text-[10px] px-2 py-0.5 rounded-md border border-slate-200">
+                    {sub}
+                  </span>
+                ))}
+                {course.subjects.length > 4 && (
+                  <span className="bg-gold/20 text-navy-dark font-bold text-[10px] px-2 py-0.5 rounded-md border border-gold/30">
+                    +{course.subjects.length - 4} more
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
