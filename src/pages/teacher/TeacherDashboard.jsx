@@ -8,7 +8,7 @@ import { Link, useNavigate } from 'react-router-dom';
 
 export const TeacherDashboard = () => {
   const { currentUser } = useAuth();
-  const { facultyClassAssignments, leaveRequests, helpdesk, announcements } = useData();
+  const { facultyClassAssignments, leaveRequests, helpdesk, announcements, attendance, examinations } = useData();
   const [mobileOpen, setMobileOpen] = useState(false);
   const navigate = useNavigate();
 
@@ -26,7 +26,80 @@ export const TeacherDashboard = () => {
 
   // Fallback to demo CSE classes if teacherId hasn't been set
   const activeAssignments = myAssignments.length > 0 ? myAssignments : facultyClassAssignments.slice(0, 3);
-  const totalStudentsCount = activeAssignments.reduce((acc, curr) => acc + (curr.studentCount || 10), 0);
+
+  // ── Dynamic: total students across all assigned classes ───────────────────
+  const totalStudentsCount = activeAssignments.reduce((acc, curr) => acc + (curr.studentCount || 0), 0);
+
+  // ── Dynamic: average students per class ───────────────────────────────────
+  const avgStudentsPerClass = activeAssignments.length > 0
+    ? Math.round(totalStudentsCount / activeAssignments.length)
+    : 0;
+
+  // ── Dynamic: per-class attendance from attendance records ─────────────────
+  const getClassAttendance = (classId) => {
+    const classRecords = attendance.filter(a => a.classId === classId || a.subjectCode === classId);
+    if (!classRecords.length) return null;
+    const presentCount = classRecords.filter(a =>
+      (a.status || '').toLowerCase() === 'present'
+    ).length;
+    return Math.round((presentCount / classRecords.length) * 100);
+  };
+
+  // ── Dynamic: overall average attendance rate across all assigned classes ──
+  const classAttendanceRates = activeAssignments.map(fca => {
+    const classRecords = attendance.filter(
+      a => a.classId === fca.classId || a.subjectCode === fca.subjectCode
+    );
+    if (!classRecords.length) return null;
+    const presentCount = classRecords.filter(a =>
+      (a.status || '').toLowerCase() === 'present'
+    ).length;
+    return (presentCount / classRecords.length) * 100;
+  }).filter(r => r !== null);
+
+  const avgAttendanceRate = classAttendanceRates.length > 0
+    ? (classAttendanceRates.reduce((sum, r) => sum + r, 0) / classAttendanceRates.length).toFixed(1)
+    : null;
+
+  const COLLEGE_THRESHOLD = 75;
+  const attendanceAboveThreshold = avgAttendanceRate !== null && parseFloat(avgAttendanceRate) >= COLLEGE_THRESHOLD;
+
+  // ── Dynamic: academic year from current date ──────────────────────────────
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const currentMonth = now.getMonth() + 1; // 1-12
+  // Academic year starts in June: Jun-Dec → currentYear/currentYear+1, Jan-May → prev/current
+  const academicStartYear = currentMonth >= 6 ? currentYear : currentYear - 1;
+  const academicYear = `${academicStartYear}-${academicStartYear + 1}`;
+
+  // ── Dynamic: timetable slots from examinations or derived from class index ─
+  const DEFAULT_SLOTS = [
+    { time: '09:00 AM - 10:30 AM', hall: 'Hall A1' },
+    { time: '10:45 AM - 12:15 PM', hall: 'Hall B2' },
+    { time: '01:30 PM - 03:00 PM', hall: 'Hall C3' },
+    { time: '03:15 PM - 04:45 PM', hall: 'Hall D4' },
+    { time: '08:00 AM - 09:30 AM', hall: 'Hall E5' },
+    { time: '11:00 AM - 12:30 PM', hall: 'Hall F6' },
+  ];
+
+  const getTimetableSlot = (fca, idx) => {
+    const today = new Date().toISOString().split('T')[0];
+    const examMatch = examinations.find(
+      ex =>
+        (ex.subjectCode === fca.subjectCode || ex.subject === fca.subjectName) &&
+        (ex.classId === fca.classId || ex.department === fca.departmentCode) &&
+        ex.date >= today
+    );
+    if (examMatch?.time) {
+      return { time: examMatch.time, hall: examMatch.venue || examMatch.hall || `Hall ${fca.departmentCode || 'A'}` };
+    }
+    const slotIndex = idx % DEFAULT_SLOTS.length;
+    const slot = DEFAULT_SLOTS[slotIndex];
+    const hallLetter = fca.classId
+      ? String.fromCharCode(65 + (fca.classId.charCodeAt(fca.classId.length - 1) % 6))
+      : String.fromCharCode(65 + slotIndex);
+    return { time: slot.time, hall: `Hall ${hallLetter}${idx + 1}` };
+  };
 
   return (
     <div className="flex min-h-screen bg-slate-100 font-sans relative">
@@ -91,19 +164,36 @@ export const TeacherDashboard = () => {
             <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
               <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Total Managed Students</span>
               <span className="text-2xl font-bold text-navy block mt-1 font-num">{totalStudentsCount} Students</span>
-              <span className="text-[10px] text-slate-500 font-bold mt-1 block">10 Students / Class</span>
+              <span className="text-[10px] text-slate-500 font-bold mt-1 block">
+                {avgStudentsPerClass > 0 ? `~${avgStudentsPerClass} Students / Class` : `${activeAssignments.length} Class${activeAssignments.length !== 1 ? 'es' : ''}`}
+              </span>
             </div>
 
             <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
               <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Avg Attendance Rate</span>
-              <span className="text-2xl font-bold text-emerald-700 block mt-1 font-num">89.4%</span>
-              <span className="text-[10px] text-emerald-600 font-bold mt-1 block">Above College Threshold</span>
+              {avgAttendanceRate !== null ? (
+                <>
+                  <span className={`text-2xl font-bold block mt-1 font-num ${attendanceAboveThreshold ? 'text-emerald-700' : 'text-rose-600'}`}>
+                    {avgAttendanceRate}%
+                  </span>
+                  <span className={`text-[10px] font-bold mt-1 block ${attendanceAboveThreshold ? 'text-emerald-600' : 'text-rose-500'}`}>
+                    {attendanceAboveThreshold ? 'Above College Threshold' : 'Below 75% Threshold'}
+                  </span>
+                </>
+              ) : (
+                <>
+                  <span className="text-2xl font-bold text-slate-400 block mt-1 font-num">—</span>
+                  <span className="text-[10px] text-slate-400 font-bold mt-1 block">No records yet</span>
+                </>
+              )}
             </div>
 
             <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
               <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Academic Year</span>
-              <span className="text-xl font-bold text-navy block mt-1 font-num">2026-2027</span>
-              <span className="text-[10px] text-slate-500 font-bold mt-1 block">Semesters 1 - 8</span>
+              <span className="text-xl font-bold text-navy block mt-1 font-num">{academicYear}</span>
+              <span className="text-[10px] text-slate-500 font-bold mt-1 block">
+                {currentMonth >= 6 ? 'Odd Semester (Aug–Dec)' : 'Even Semester (Jan–May)'}
+              </span>
             </div>
           </div>
 
@@ -124,54 +214,66 @@ export const TeacherDashboard = () => {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              {activeAssignments.map(fca => (
-                <div key={fca.assignmentId} className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200 hover:border-gold hover:shadow-md transition-all flex flex-col justify-between space-y-4">
-                  
-                  <div className="space-y-2">
-                    <div className="flex justify-between items-center">
-                      <span className="bg-navy text-gold text-[10px] font-bold px-2.5 py-0.5 rounded uppercase">
-                        {fca.departmentCode} &bull; {fca.year}
-                      </span>
-                      <span className="text-[10px] text-slate-500 font-bold font-mono">
-                        {fca.semester}
-                      </span>
+              {activeAssignments.map((fca, idx) => {
+                const classAttPct = getClassAttendance(fca.classId || fca.subjectCode);
+                const enrolledCount = fca.studentCount || 0;
+                return (
+                  <div key={fca.assignmentId} className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200 hover:border-gold hover:shadow-md transition-all flex flex-col justify-between space-y-4">
+                    
+                    <div className="space-y-2">
+                      <div className="flex justify-between items-center">
+                        <span className="bg-navy text-gold text-[10px] font-bold px-2.5 py-0.5 rounded uppercase">
+                          {fca.departmentCode} &bull; {fca.year}
+                        </span>
+                        <span className="text-[10px] text-slate-500 font-bold font-mono">
+                          {fca.semester}
+                        </span>
+                      </div>
+
+                      <h3 className="text-lg font-serif font-bold text-navy leading-snug">
+                        {fca.subjectName}
+                      </h3>
+                      <p className="text-xs text-slate-500 font-mono">Subject Code: {fca.subjectCode}</p>
                     </div>
 
-                    <h3 className="text-lg font-serif font-bold text-navy leading-snug">
-                      {fca.subjectName}
-                    </h3>
-                    <p className="text-xs text-slate-500 font-mono">Subject Code: {fca.subjectCode}</p>
-                  </div>
-
-                  <div className="p-3 bg-slate-50 border rounded-xl grid grid-cols-2 gap-2 text-xs font-sans">
-                    <div>
-                      <span className="text-slate-400 text-[10px] uppercase font-bold block">Enrolled Strength</span>
-                      <span className="font-bold text-navy">{fca.studentCount || 30} Students</span>
+                    <div className="p-3 bg-slate-50 border rounded-xl grid grid-cols-2 gap-2 text-xs font-sans">
+                      <div>
+                        <span className="text-slate-400 text-[10px] uppercase font-bold block">Enrolled Strength</span>
+                        <span className="font-bold text-navy">
+                          {enrolledCount > 0 ? `${enrolledCount} Students` : 'N/A'}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 text-[10px] uppercase font-bold block">Avg Attendance</span>
+                        {classAttPct !== null ? (
+                          <span className={`font-bold ${classAttPct >= COLLEGE_THRESHOLD ? 'text-emerald-700' : 'text-rose-600'}`}>
+                            {classAttPct}%
+                          </span>
+                        ) : (
+                          <span className="font-bold text-slate-400">—</span>
+                        )}
+                      </div>
                     </div>
-                    <div>
-                      <span className="text-slate-400 text-[10px] uppercase font-bold block">Avg Attendance</span>
-                      <span className="font-bold text-emerald-700">90%</span>
+
+                    <div className="flex space-x-2 pt-2 border-t border-slate-100">
+                      <button
+                        onClick={() => navigate(`/staff/classes/${fca.classId}`)}
+                        className="flex-1 py-2.5 bg-navy hover:bg-navy-light text-gold font-bold text-xs rounded-xl shadow uppercase tracking-wider text-center"
+                      >
+                        Manage Class
+                      </button>
+                      <button
+                        onClick={() => navigate(`/staff/classes/${fca.classId}`)}
+                        className="px-3 py-2.5 bg-slate-100 hover:bg-slate-200 text-navy font-bold text-xs rounded-xl"
+                        title="Attendance"
+                      >
+                        Attendance
+                      </button>
                     </div>
-                  </div>
 
-                  <div className="flex space-x-2 pt-2 border-t border-slate-100">
-                    <button
-                      onClick={() => navigate(`/staff/classes/${fca.classId}`)}
-                      className="flex-1 py-2.5 bg-navy hover:bg-navy-light text-gold font-bold text-xs rounded-xl shadow uppercase tracking-wider text-center"
-                    >
-                      Manage Class
-                    </button>
-                    <button
-                      onClick={() => navigate(`/staff/classes/${fca.classId}`)}
-                      className="px-3 py-2.5 bg-slate-100 hover:bg-slate-200 text-navy font-bold text-xs rounded-xl"
-                      title="Attendance"
-                    >
-                      Attendance
-                    </button>
                   </div>
-
-                </div>
-              ))}
+                );
+              })}
             </div>
 
           </div>
@@ -183,20 +285,27 @@ export const TeacherDashboard = () => {
                 <Clock className="w-4 h-4 text-gold mr-2" /> Today's Lecture Timetable
               </h3>
               <div className="space-y-3">
-                {activeAssignments.map((fca, idx) => (
-                  <div key={idx} className="p-3.5 bg-slate-50 border rounded-xl flex justify-between items-center text-xs">
-                    <div>
-                      <span className="font-bold text-navy block">{fca.subjectName}</span>
-                      <span className="text-slate-500 font-serif text-[11px]">{fca.departmentCode} &bull; {fca.year} ({fca.semester})</span>
-                    </div>
-                    <div className="text-right">
-                      <span className="font-mono font-bold text-gold bg-navy px-2 py-0.5 rounded text-[11px]">
-                        {idx === 0 ? '09:30 AM - 10:45 AM' : idx === 1 ? '11:15 AM - 12:30 PM' : '02:00 PM - 03:30 PM'}
-                      </span>
-                      <span className="text-[10px] text-slate-400 block mt-0.5">Hall {idx + 1}B</span>
-                    </div>
-                  </div>
-                ))}
+                {activeAssignments.length === 0 ? (
+                  <p className="text-xs text-slate-400 text-center py-4">No classes assigned yet.</p>
+                ) : (
+                  activeAssignments.map((fca, idx) => {
+                    const slot = getTimetableSlot(fca, idx);
+                    return (
+                      <div key={idx} className="p-3.5 bg-slate-50 border rounded-xl flex justify-between items-center text-xs">
+                        <div>
+                          <span className="font-bold text-navy block">{fca.subjectName}</span>
+                          <span className="text-slate-500 font-serif text-[11px]">{fca.departmentCode} &bull; {fca.year} ({fca.semester})</span>
+                        </div>
+                        <div className="text-right">
+                          <span className="font-mono font-bold text-gold bg-navy px-2 py-0.5 rounded text-[11px]">
+                            {slot.time}
+                          </span>
+                          <span className="text-[10px] text-slate-400 block mt-0.5">{slot.hall}</span>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
               </div>
             </div>
 
@@ -205,13 +314,17 @@ export const TeacherDashboard = () => {
                 <AlertCircle className="w-4 h-4 text-gold mr-2" /> Recent Faculty Announcements
               </h3>
               <div className="space-y-3 text-xs">
-                {announcements.slice(0, 3).map((ann, i) => (
-                  <div key={i} className="p-3.5 bg-slate-50 border rounded-xl space-y-1">
-                    <span className="font-bold text-navy block">{ann.title}</span>
-                    <p className="text-slate-600 font-serif">{ann.content}</p>
-                    <span className="text-[10px] text-slate-400 block">{ann.date}</span>
-                  </div>
-                ))}
+                {announcements.length === 0 ? (
+                  <p className="text-xs text-slate-400 text-center py-4">No announcements available.</p>
+                ) : (
+                  announcements.slice(0, 3).map((ann, i) => (
+                    <div key={i} className="p-3.5 bg-slate-50 border rounded-xl space-y-1">
+                      <span className="font-bold text-navy block">{ann.title}</span>
+                      <p className="text-slate-600 font-serif">{ann.content}</p>
+                      <span className="text-[10px] text-slate-400 block">{ann.date}</span>
+                    </div>
+                  ))
+                )}
               </div>
             </div>
           </div>
