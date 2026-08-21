@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
-import { LogIn, Lock, Mail, AlertCircle, ShieldCheck, UserCheck, UserPlus, CheckCircle2 } from 'lucide-react';
+import { LogIn, Lock, Mail, AlertCircle, ShieldCheck, UserCheck, UserPlus, CheckCircle2, Eye, EyeOff } from 'lucide-react';
 
 export const Login = () => {
   const location = useLocation();
@@ -12,6 +12,7 @@ export const Login = () => {
   // Isolated Login state
   const [loginEmail, setLoginEmail] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
+  const [showLoginPassword, setShowLoginPassword] = useState(false);
 
   // Isolated Signup state
   const [signupFullName, setSignupFullName] = useState('');
@@ -19,6 +20,7 @@ export const Login = () => {
   const [signupPhone, setSignupPhone] = useState('');
   const [signupCourse, setSignupCourse] = useState('');
   const [signupPassword, setSignupPassword] = useState('');
+  const [showSignupPassword, setShowSignupPassword] = useState(false);
 
   const [errorMsg, setErrorMsg] = useState('');
   const [createdStudent, setCreatedStudent] = useState(null);
@@ -31,11 +33,13 @@ export const Login = () => {
   const resetForm = () => {
     setLoginEmail('');
     setLoginPassword('');
+    setShowLoginPassword(false);
     setSignupFullName('');
     setSignupEmail('');
     setSignupPhone('');
     setSignupCourse('');
     setSignupPassword('');
+    setShowSignupPassword(false);
     setErrorMsg('');
   };
 
@@ -174,15 +178,23 @@ export const Login = () => {
                 <div className="relative">
                   <Lock className="w-5 h-5 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
                   <input
-                    type="password"
+                    type={showLoginPassword ? 'text' : 'password'}
                     required
                     name="login_pwd_no_autofill"
                     autoComplete="new-password"
                     value={loginPassword}
                     onChange={(e) => setLoginPassword(e.target.value)}
                     placeholder="••••••••"
-                    className="w-full pl-11 pr-4 py-3 bg-slate-50 border border-slate-300 rounded-xl text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:border-gold focus:ring-1 focus:ring-gold font-sans"
+                    className="w-full pl-11 pr-11 py-3 bg-slate-50 border border-slate-300 rounded-xl text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:border-gold focus:ring-1 focus:ring-gold font-sans"
                   />
+                  <button
+                    type="button"
+                    onClick={() => setShowLoginPassword(!showLoginPassword)}
+                    className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 focus:outline-none p-1 transition-colors"
+                    title={showLoginPassword ? "Hide password" : "Show password"}
+                  >
+                    {showLoginPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                  </button>
                 </div>
               </div>
 
@@ -307,16 +319,26 @@ export const Login = () => {
                 <label className="block text-xs font-sans font-bold uppercase tracking-wider text-slate-700 mb-1">
                   Create Password *
                 </label>
-                <input
-                  type="password"
-                  required
-                  name="signup_password_field"
-                  autoComplete="new-password"
-                  value={signupPassword}
-                  onChange={(e) => setSignupPassword(e.target.value)}
-                  placeholder="••••••••"
-                  className="w-full px-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:border-gold"
-                />
+                <div className="relative">
+                  <input
+                    type={showSignupPassword ? 'text' : 'password'}
+                    required
+                    name="signup_password_field"
+                    autoComplete="new-password"
+                    value={signupPassword}
+                    onChange={(e) => setSignupPassword(e.target.value)}
+                    placeholder="••••••••"
+                    className="w-full pl-4 pr-11 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:border-gold"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowSignupPassword(!showSignupPassword)}
+                    className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 focus:outline-none p-1 transition-colors"
+                    title={showSignupPassword ? "Hide password" : "Show password"}
+                  >
+                    {showSignupPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                  </button>
+                </div>
               </div>
 
               <button
