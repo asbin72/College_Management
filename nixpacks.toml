@@ -1,0 +1,12 @@
+# Railway Nixpacks Configuration for Kalpanaaa Education
+[phases.setup]
+nixPkgs = ['nodejs_18']
+
+[phases.install]
+cmds = ['npm install']
+
+[phases.build]
+cmds = ['npm run build']
+
+[start]
+cmd = 'node server/index.js'
