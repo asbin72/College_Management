@@ -131,11 +131,6 @@ export const AuthProvider = ({ children, users = [] }) => {
 
     setAuthError('Invalid credentials. Please verify your Email/ID and Password.');
     return { success: false, error: 'Invalid credentials.' };
-
-    setCurrentUser(user);
-    localStorage.setItem('kalpanaaa_auth_user', JSON.stringify(user));
-    setSandboxState({ isPreview: false, previewRole: null, realUser: null });
-    return { success: true, user, role: user.role };
   };
 
   // STUDENT SIGNUP

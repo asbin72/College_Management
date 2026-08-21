@@ -293,7 +293,7 @@ function securityRouteGuard(req, res, next) {
         if (role !== 'ADMIN') {
           return res.status(403).json({ success: false, message: `Forbidden: ${method} ${p} requires ADMIN role.` });
         }
-      } else if (p.startsWith('/api/teachers') || p.startsWith('/api/students') || p.startsWith('/api/departments') || p.startsWith('/api/courses') || p.startsWith('/api/subjects') || p.startsWith('/api/faculty-assignments')) {
+      } else if (p.startsWith('/api/teachers') || p.startsWith('/api/students') || p.startsWith('/api/departments') || p.startsWith('/api/courses') || p.startsWith('/api/subjects') || p.startsWith('/api/timetable') || p.startsWith('/api/faculty-assignments')) {
         if (role !== 'ADMIN') {
           return res.status(403).json({ success: false, message: `Forbidden: ${method} ${p} requires ADMIN role.` });
         }
@@ -891,16 +891,31 @@ app.delete('/api/courses/:id', async (req, res) => {
   }
 });
 
-// --- SUBJECTS ENDPOINTS ---
+// --- SUBJECTS & COURSE-SUBJECT LINKAGE ENDPOINTS ---
+app.get('/api/courses/:courseId/subjects', async (req, res) => {
+  const { courseId } = req.params;
+  try {
+    const [courseRows] = await dbPool.query('SELECT * FROM courses WHERE id = ? OR code = ?', [courseId, courseId]);
+    const crs = courseRows[0];
+    let rows = [];
+    if (crs) {
+      [rows] = await dbPool.query(
+        'SELECT * FROM subjects WHERE courseId = ? OR (LOWER(department) = LOWER(?) AND LOWER(semester) = LOWER(?)) ORDER BY code ASC',
+        [crs.id, crs.department, crs.semester]
+      );
+    } else {
+      [rows] = await dbPool.query('SELECT * FROM subjects WHERE courseId = ? ORDER BY code ASC', [courseId]);
+    }
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.get('/api/subjects', async (req, res) => {
   try {
     const [rows] = await dbPool.query('SELECT * FROM subjects ORDER BY code ASC');
-    if (rows.length > 0) {
-      return res.json(rows);
-    }
-    // Fallback to courses if subjects table is empty
-    const [courseRows] = await dbPool.query('SELECT id, code, name, department, semester, credits FROM courses ORDER BY code ASC');
-    res.json(courseRows);
+    res.json(rows);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -911,12 +926,43 @@ app.post('/api/subjects', async (req, res) => {
   const id = s.id || `sub-${Date.now()}`;
   try {
     await dbPool.query(`
-      INSERT INTO subjects (id, code, name, department, semester, credits)
-      VALUES (?, ?, ?, ?, ?, ?)
-      ON DUPLICATE KEY UPDATE name = VALUES(name), department = VALUES(department), credits = VALUES(credits)
-    `, [id, s.code, s.name, s.department || 'Computer Science & Engineering', s.semester || 'Semester 1', Number(s.credits || 4)]);
+      INSERT INTO subjects (id, code, name, department, courseId, assignedTeacherId, assignedTeacherName, semester, credits)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON DUPLICATE KEY UPDATE 
+        name = VALUES(name), department = VALUES(department), courseId = VALUES(courseId),
+        assignedTeacherId = VALUES(assignedTeacherId), assignedTeacherName = VALUES(assignedTeacherName),
+        semester = VALUES(semester), credits = VALUES(credits)
+    `, [
+      id, s.code, s.name, s.department || 'Computer Science & Engineering',
+      s.courseId || null, s.assignedTeacherId || null, s.assignedTeacherName || null,
+      s.semester || 'Semester 1', Number(s.credits || 4)
+    ]);
     broadcastRealTimeEvent('SUBJECT_ADDED', { id, code: s.code, name: s.name });
     res.json({ success: true, id, message: 'Subject created in database.' });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.put('/api/subjects/:id', async (req, res) => {
+  const { id } = req.params;
+  const s = req.body;
+  try {
+    await dbPool.query(`
+      UPDATE subjects
+      SET name = COALESCE(?, name), code = COALESCE(?, code), department = COALESCE(?, department),
+          courseId = COALESCE(?, courseId), assignedTeacherId = COALESCE(?, assignedTeacherId),
+          assignedTeacherName = COALESCE(?, assignedTeacherName), semester = COALESCE(?, semester),
+          credits = COALESCE(?, credits)
+      WHERE id = ? OR code = ?
+    `, [
+      s.name || null, s.code || null, s.department || null,
+      s.courseId || null, s.assignedTeacherId || null, s.assignedTeacherName || null,
+      s.semester || null, s.credits ? Number(s.credits) : null,
+      id, id
+    ]);
+    broadcastRealTimeEvent('SUBJECT_UPDATED', { id, code: s.code, name: s.name });
+    res.json({ success: true, message: `Subject ${id} updated in database.` });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
@@ -1081,6 +1127,23 @@ app.get('/api/departments', async (req, res) => {
   }
 });
 
+app.get('/api/departments/:id/courses', async (req, res) => {
+  const { id } = req.params;
+  try {
+    const [deptRows] = await dbPool.query('SELECT * FROM departments WHERE id = ? OR code = ? OR name = ?', [id, id, id]);
+    const dept = deptRows[0];
+    const deptCode = dept ? dept.code : id;
+    const deptName = dept ? dept.name : id;
+    const [rows] = await dbPool.query(
+      'SELECT * FROM courses WHERE departmentCode = ? OR department = ? OR department = ? ORDER BY code ASC',
+      [deptCode, deptName, id]
+    );
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.post('/api/departments', async (req, res) => {
   const d = req.body;
   const id = d.id || `dept-${Date.now()}`;
@@ -1182,10 +1245,241 @@ app.delete('/api/faculty-assignments/:assignmentId', async (req, res) => {
   }
 });
 
-app.get('/api/attendance', async (req, res) => {
+// --- TIMETABLE SLOTS ENDPOINTS ---
+app.get('/api/timetable', async (req, res) => {
+  const { department, semester, section, day, teacherId, courseId } = req.query;
   try {
-    const [rows] = await dbPool.query('SELECT * FROM attendance_logs ORDER BY date DESC, id DESC LIMIT 500');
+    let sql = 'SELECT * FROM timetable_slots WHERE 1=1';
+    const params = [];
+    if (department) { sql += ' AND (LOWER(department) = LOWER(?) OR LOWER(department) = LOWER(?))'; params.push(department, department); }
+    if (semester) { sql += ' AND LOWER(semester) = LOWER(?)'; params.push(semester); }
+    if (section) { sql += ' AND LOWER(section) = LOWER(?)'; params.push(section); }
+    if (day) { sql += ' AND LOWER(dayOfWeek) = LOWER(?)'; params.push(day); }
+    if (teacherId) { sql += ' AND (teacherId = ? OR teacherName = ?)'; params.push(teacherId, teacherId); }
+    if (courseId) { sql += ' AND courseId = ?'; params.push(courseId); }
+    sql += ' ORDER BY FIELD(dayOfWeek, "Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"), period ASC';
+
+    const [rows] = await dbPool.query(sql, params);
     res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/timetable', async (req, res) => {
+  const t = req.body;
+  const id = t.id || `slot-${Date.now()}-${Math.floor(100 + Math.random() * 900)}`;
+  const classId = t.classId || `CLS-${t.departmentCode || t.department}-${t.semester}-${t.section || 'A'}`;
+  try {
+    await dbPool.query(`
+      INSERT INTO timetable_slots (
+        id, subjectId, subjectCode, subjectName, courseId, department, semester,
+        section, teacherId, teacherName, dayOfWeek, period, startTime, endTime, room, classId, status
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON DUPLICATE KEY UPDATE
+        subjectCode = VALUES(subjectCode), subjectName = VALUES(subjectName), teacherId = VALUES(teacherId),
+        teacherName = VALUES(teacherName), startTime = VALUES(startTime), endTime = VALUES(endTime),
+        room = VALUES(room), status = VALUES(status)
+    `, [
+      id, t.subjectId || id, t.subjectCode, t.subjectName, t.courseId || null,
+      t.department, t.semester, t.section || 'A', t.teacherId || null,
+      t.teacherName || null, t.dayOfWeek || 'Mon', t.period || 'P1',
+      t.startTime || '09:00 AM', t.endTime || '10:00 AM', t.room || 'Room 101',
+      classId, t.status || 'Active'
+    ]);
+
+    // Upsert into faculty_class_assignments if teacherId is assigned
+    if (t.teacherId) {
+      const asnId = `FAC-${t.teacherId}-${t.subjectCode}-${t.section || 'A'}`;
+      await dbPool.query(`
+        INSERT INTO faculty_class_assignments (
+          id, assignmentId, teacherId, teacherName, subjectCode, subjectName,
+          department, semester, section, classId
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON DUPLICATE KEY UPDATE teacherId = VALUES(teacherId), teacherName = VALUES(teacherName)
+      `, [
+        asnId, asnId, t.teacherId, t.teacherName || 'Faculty', t.subjectCode,
+        t.subjectName, t.department, t.semester, t.section || 'A', classId
+      ]).catch(() => {});
+    }
+
+    broadcastRealTimeEvent('TIMETABLE_SLOT_ADDED', { id, subjectCode: t.subjectCode, dayOfWeek: t.dayOfWeek });
+    res.json({ success: true, id, classId, message: 'Timetable slot created.' });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.put('/api/timetable/:id', async (req, res) => {
+  const { id } = req.params;
+  const t = req.body;
+  try {
+    await dbPool.query(`
+      UPDATE timetable_slots
+      SET subjectCode = COALESCE(?, subjectCode), subjectName = COALESCE(?, subjectName),
+          teacherId = COALESCE(?, teacherId), teacherName = COALESCE(?, teacherName),
+          dayOfWeek = COALESCE(?, dayOfWeek), period = COALESCE(?, period),
+          startTime = COALESCE(?, startTime), endTime = COALESCE(?, endTime),
+          room = COALESCE(?, room), status = COALESCE(?, status)
+      WHERE id = ?
+    `, [
+      t.subjectCode || null, t.subjectName || null, t.teacherId || null, t.teacherName || null,
+      t.dayOfWeek || null, t.period || null, t.startTime || null, t.endTime || null,
+      t.room || null, t.status || null, id
+    ]);
+    broadcastRealTimeEvent('TIMETABLE_SLOT_UPDATED', { id });
+    res.json({ success: true, message: `Timetable slot ${id} updated.` });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.delete('/api/timetable/:id', async (req, res) => {
+  const { id } = req.params;
+  try {
+    await dbPool.query('DELETE FROM timetable_slots WHERE id = ?', [id]);
+    broadcastRealTimeEvent('TIMETABLE_SLOT_DELETED', { id });
+    res.json({ success: true, message: `Timetable slot ${id} deleted.` });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// --- STUDENT TODAY SUBJECTS ENDPOINT ---
+app.get('/api/students/:id/today-subjects', async (req, res) => {
+  const { id } = req.params;
+  try {
+    const [stdRows] = await dbPool.query('SELECT * FROM students WHERE id = ? OR studentId = ?', [id, id]);
+    if (stdRows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Student not found.' });
+    }
+    const stu = stdRows[0];
+
+    const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const todayDay = days[new Date().getDay()];
+
+    const dept = stu.department;
+    const deptCode = stu.departmentCode;
+    const sem = stu.semester;
+    const sec = stu.section || 'A';
+    const cleanSec = sec.replace(/Sec\s*/i, '').trim() || 'A';
+
+    const [slots] = await dbPool.query(`
+      SELECT * FROM timetable_slots
+      WHERE (LOWER(department) = LOWER(?) OR LOWER(department) = LOWER(?))
+        AND LOWER(semester) = LOWER(?)
+        AND (LOWER(section) = LOWER(?) OR LOWER(section) = LOWER(?) OR section IS NULL OR section = 'ALL')
+        AND dayOfWeek = ?
+      ORDER BY period ASC, startTime ASC
+    `, [dept, deptCode, sem, sec, cleanSec, todayDay]);
+
+    res.json({
+      studentId: stu.studentId,
+      dayOfWeek: todayDay,
+      department: dept,
+      semester: sem,
+      section: sec,
+      todaySubjects: slots
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// --- TEACHER DASHBOARD & CLASSES ENDPOINTS ---
+app.get('/api/teachers/:id/dashboard-summary', async (req, res) => {
+  const { id } = req.params;
+  try {
+    const [tchRows] = await dbPool.query('SELECT * FROM teachers WHERE id = ? OR employeeId = ?', [id, id]);
+    const tch = tchRows[0];
+    const empId = tch ? tch.employeeId : id;
+    const tchName = tch ? tch.name : id;
+
+    const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const todayDay = days[new Date().getDay()];
+
+    const [assignedSubjects] = await dbPool.query(
+      'SELECT DISTINCT subjectCode, subjectName FROM timetable_slots WHERE teacherId = ? OR teacherName = ?',
+      [empId, tchName]
+    );
+
+    const [assignedClasses] = await dbPool.query(
+      'SELECT DISTINCT department, semester, section, classId FROM timetable_slots WHERE teacherId = ? OR teacherName = ?',
+      [empId, tchName]
+    );
+
+    const [todayClasses] = await dbPool.query(
+      'SELECT * FROM timetable_slots WHERE (teacherId = ? OR teacherName = ?) AND dayOfWeek = ? ORDER BY period ASC',
+      [empId, tchName, todayDay]
+    );
+
+    res.json({
+      teacherId: empId,
+      teacherName: tchName,
+      totalSubjects: assignedSubjects.length,
+      totalClasses: assignedClasses.length,
+      todayClassCount: todayClasses.length,
+      classesBreakdown: assignedClasses,
+      todayClasses
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/teachers/:id/classes-today', async (req, res) => {
+  const { id } = req.params;
+  try {
+    const [tchRows] = await dbPool.query('SELECT * FROM teachers WHERE id = ? OR employeeId = ?', [id, id]);
+    const tch = tchRows[0];
+    const empId = tch ? tch.employeeId : id;
+    const tchName = tch ? tch.name : id;
+
+    const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const todayDay = days[new Date().getDay()];
+
+    const [todayClasses] = await dbPool.query(
+      'SELECT * FROM timetable_slots WHERE (teacherId = ? OR teacherName = ?) AND dayOfWeek = ? ORDER BY period ASC',
+      [empId, tchName, todayDay]
+    );
+    res.json(todayClasses);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/teachers/:id/attendance-overview', async (req, res) => {
+  const { id } = req.params;
+  try {
+    const [tchRows] = await dbPool.query('SELECT * FROM teachers WHERE id = ? OR employeeId = ?', [id, id]);
+    const tch = tchRows[0];
+    const empId = tch ? tch.employeeId : id;
+    const tchName = tch ? tch.name : id;
+
+    const [slots] = await dbPool.query(
+      'SELECT DISTINCT subjectCode, subjectName, department, semester, section, classId FROM timetable_slots WHERE teacherId = ? OR teacherName = ?',
+      [empId, tchName]
+    );
+
+    const overview = [];
+    for (const slot of slots) {
+      const [logs] = await dbPool.query(
+        'SELECT COUNT(*) as total, SUM(CASE WHEN status = "Present" THEN 1 ELSE 0 END) as presentCount FROM attendance_logs WHERE subjectCode = ? OR classId = ?',
+        [slot.subjectCode, slot.classId]
+      );
+      const total = logs[0]?.total || 0;
+      const present = logs[0]?.presentCount || 0;
+      const percentage = total > 0 ? Math.round((present / total) * 100) : 0;
+
+      overview.push({
+        ...slot,
+        totalLogs: total,
+        presentCount: present,
+        attendancePercentage: percentage
+      });
+    }
+
+    res.json(overview);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

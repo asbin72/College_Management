@@ -105,8 +105,34 @@ async function createTablesIfNotExist(connection) {
       code VARCHAR(20) UNIQUE NOT NULL,
       name VARCHAR(150) NOT NULL,
       department VARCHAR(100) NOT NULL,
+      courseId VARCHAR(50),
+      assignedTeacherId VARCHAR(50),
+      assignedTeacherName VARCHAR(150),
       semester VARCHAR(50) DEFAULT 'Semester 1',
       credits INT DEFAULT 4
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;`,
+
+    `CREATE TABLE IF NOT EXISTS timetable_slots (
+      id VARCHAR(100) PRIMARY KEY,
+      subjectId VARCHAR(50) NOT NULL,
+      subjectCode VARCHAR(20) NOT NULL,
+      subjectName VARCHAR(150) NOT NULL,
+      courseId VARCHAR(50),
+      department VARCHAR(100) NOT NULL,
+      semester VARCHAR(50) NOT NULL,
+      section VARCHAR(10) DEFAULT 'A',
+      teacherId VARCHAR(50),
+      teacherName VARCHAR(150),
+      dayOfWeek VARCHAR(10) NOT NULL,
+      period VARCHAR(20) NOT NULL,
+      startTime VARCHAR(10),
+      endTime VARCHAR(10),
+      room VARCHAR(50),
+      classId VARCHAR(100),
+      status VARCHAR(20) DEFAULT 'Active',
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      INDEX idx_dept_sem_sec_day (department, semester, section, dayOfWeek),
+      INDEX idx_teacher (teacherId)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;`,
 
     `CREATE TABLE IF NOT EXISTS attendance_logs (
@@ -395,7 +421,10 @@ async function createTablesIfNotExist(connection) {
     "ALTER TABLE examinations ADD COLUMN time VARCHAR(50)",
     "ALTER TABLE examinations ADD COLUMN room VARCHAR(100)",
     "ALTER TABLE examinations ADD COLUMN eligibilityAttendance INT DEFAULT 75",
-    "ALTER TABLE examinations ADD COLUMN isPublished INT DEFAULT 0"
+    "ALTER TABLE examinations ADD COLUMN isPublished INT DEFAULT 0",
+    "ALTER TABLE subjects ADD COLUMN courseId VARCHAR(50)",
+    "ALTER TABLE subjects ADD COLUMN assignedTeacherId VARCHAR(50)",
+    "ALTER TABLE subjects ADD COLUMN assignedTeacherName VARCHAR(150)"
   ];
 
   for (const mig of columnMigrations) {
@@ -482,6 +511,18 @@ export async function initializeDatabase() {
           ON DUPLICATE KEY UPDATE name = VALUES(name)
         `, [d.id, d.name, d.code, d.hod, d.description, d.status]);
       }
+    }
+
+    // Safe backfill: for existing subjects, link courseId to matching course by department & semester where unambiguous
+    try {
+      await connection.query(`
+        UPDATE subjects s
+        JOIN courses c ON (LOWER(s.department) = LOWER(c.department) AND LOWER(s.semester) = LOWER(c.semester))
+        SET s.courseId = c.id
+        WHERE s.courseId IS NULL OR s.courseId = ''
+      `);
+    } catch (e) {
+      // Ignore if backfill query cannot be run
     }
 
     const [stdCount] = await connection.query('SELECT COUNT(*) as count FROM students');
