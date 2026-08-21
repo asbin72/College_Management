@@ -452,6 +452,10 @@ export const DataProvider = ({ children }) => {
           console.warn('Real-time event processing issue:', e);
         }
       };
+
+      eventSource.onerror = () => {
+        // Quietly handle stream resets; browser EventSource automatically reconnects
+      };
     } catch (e) {}
 
     return () => {

@@ -161,9 +161,14 @@ app.get('/', async (req, res) => {
 let sseClients = [];
 
 app.get('/api/events', (req, res) => {
+  const origin = req.headers.origin || '*';
+  res.setHeader('Access-Control-Allow-Origin', origin);
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
+  res.setHeader('Access-Control-Allow-Headers', 'Cache-Control, Content-Type, Authorization, X-Requested-With');
   res.setHeader('Content-Type', 'text/event-stream');
-  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Cache-Control', 'no-cache, no-transform');
   res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
   res.flushHeaders();
 
   const clientId = `client-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
@@ -180,6 +185,17 @@ app.get('/api/events', (req, res) => {
     console.log(`📡 SSE Client Disconnected: ${clientId} (Remaining: ${sseClients.length})`);
   });
 });
+
+// Periodic heartbeat to prevent HTTP/2 protocol errors & connection dropouts on Railway/Vercel proxies
+setInterval(() => {
+  sseClients.forEach(client => {
+    try {
+      client.res.write(': ping\n\n');
+    } catch (e) {
+      // Ignore write errors; client disconnect handler will clean up
+    }
+  });
+}, 15000);
 
 // Global Event Dispatcher (Broadcasts live changes to all connected browsers/devices)
 function broadcastRealTimeEvent(eventType, payload) {
