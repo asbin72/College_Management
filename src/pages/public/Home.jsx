@@ -6,6 +6,7 @@ import { ProgramCard } from '../../components/public/ProgramCard';
 import { Lightbox } from '../../components/common/Lightbox';
 import { AnimatedCounter } from '../../components/common/AnimatedCounter';
 import { useData } from '../../context/DataContext';
+import { INITIAL_COURSES } from '../../data/initialMockData';
 import { BookOpen, Users, Building, Code, ShieldCheck, Briefcase, ArrowRight, Calendar, MapPin, Mail, CheckCircle2, ChevronRight, Eye, Terminal, Laptop } from 'lucide-react';
 
 export const Home = () => {
