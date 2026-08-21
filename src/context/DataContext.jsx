@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useMemo } from 'react';
+import { getCurrentYear, getAcademicYear, generateRegisterNumber, generateTransactionId, generateAppRef } from '../utils/idGenerator';
 import {
   INITIAL_USERS,
   INITIAL_DEPARTMENTS,
@@ -575,12 +576,12 @@ export const DataProvider = ({ children }) => {
   // USER (STUDENTS, TEACHERS, ADMINS) MANAGEMENT CRUD
   // -------------------------------------------------------------
   const addStudent = async (studentData, actorUser) => {
-    const studentId = studentData.studentId || `STU-2026-${String(users.filter(u => u.role === 'STUDENT').length + 1).padStart(3, '0')}`;
+    const studentId = studentData.studentId || `STU-${getCurrentYear()}-${String(users.filter(u => u.role === 'STUDENT').length + 1).padStart(3, '0')}`;
     const newStudent = {
-      id: `user-student-${Date.now()}`,
+      id: studentData.id || `stu-${Date.now()}`,
       studentId,
-      username: studentId,
-      registerNumber: studentData.registerNumber || `REG-2026-${String(Math.floor(1000 + Math.random() * 9000))}`,
+      rollNo: studentData.rollNo || studentId,
+      registerNumber: studentData.registerNumber || generateRegisterNumber(),
       name: studentData.name,
       email: studentData.email || `${studentData.name.toLowerCase().replace(/\s+/g, '.')}@kalpanaaa.edu`,
       phone: studentData.phone || '+91 98765 43210',
@@ -846,7 +847,7 @@ export const DataProvider = ({ children }) => {
 
     const classId = `CLS-${allocationData.departmentCode || 'ENG'}-${allocationData.year.charAt(0)}-${allocationData.semester.replace(/\s+/g, '').toUpperCase()}-${allocationData.subjectCode}`;
     const newAssignment = {
-      assignmentId: `FCA-2026-${Math.floor(100 + Math.random() * 900)}`,
+      assignmentId: `FCA-${getCurrentYear()}-${Math.floor(100 + Math.random() * 900)}`,
       classId,
       facultyId: facultyObj.employeeId || facultyObj.id,
       facultyName: facultyObj.name,
@@ -856,7 +857,7 @@ export const DataProvider = ({ children }) => {
       semester: allocationData.semester,
       subjectCode: allocationData.subjectCode,
       subjectName: allocationData.subjectName,
-      academicYear: '2026-2027',
+      academicYear: getAcademicYear(),
       studentCount: 10,
       assignedDate: new Date().toISOString().split('T')[0],
       startDate: '2026-08-01',
@@ -992,7 +993,7 @@ export const DataProvider = ({ children }) => {
   // -------------------------------------------------------------
   const addAssignment = async (assignmentData, staffUser) => {
     const createdAssignment = {
-      id: `ASN-2026-${Math.floor(100 + Math.random() * 900)}`,
+      id: `ASN-${getCurrentYear()}-${Math.floor(100 + Math.random() * 900)}`,
       title: assignmentData.title,
       subject: assignmentData.subject,
       code: assignmentData.subject?.split(' ')[0] || 'CS-601',
@@ -1273,7 +1274,7 @@ export const DataProvider = ({ children }) => {
     const studentId = paymentData.studentId || studentUser.studentId || studentUser.username || studentUser.id;
     const amount = Number(paymentData.amount || 0);
     const newTxn = {
-      id: paymentData.txnId || `TXN-2026-${Math.floor(10000 + Math.random() * 90000)}`,
+      id: paymentData.txnId || generateTransactionId(),
       studentId,
       date: new Date().toISOString().split('T')[0],
       feeType: paymentData.feeCategory || 'Tuition Fee Payment',
@@ -1317,7 +1318,7 @@ export const DataProvider = ({ children }) => {
   // -------------------------------------------------------------
   const submitLeaveRequest = async (leaveData, user) => {
     const newRequest = {
-      id: `LV-2026-${Math.floor(100 + Math.random() * 900)}`,
+      id: `LV-${getCurrentYear()}-${Math.floor(100 + Math.random() * 900)}`,
       applicantId: user.studentId || user.employeeId || user.id,
       applicantName: user.name,
       applicantEmail: user.email,
@@ -1378,7 +1379,7 @@ export const DataProvider = ({ children }) => {
     const targetRole = ticketData.targetRole || (isStaff ? 'ADMIN' : (staffCategories.includes(ticketData.category) ? 'STAFF' : 'ADMIN'));
 
     const newTicket = {
-      id: `TKT-2026-${Math.floor(1000 + Math.random() * 9000)}`,
+      id: `TKT-${getCurrentYear()}-${Math.floor(1000 + Math.random() * 9000)}`,
       applicantId: senderUser.studentId || senderUser.employeeId || senderUser.username || senderUser.id,
       applicantName: senderUser.name,
       applicantEmail: senderUser.email,
@@ -1542,7 +1543,7 @@ export const DataProvider = ({ children }) => {
   };
 
   const submitAdmissionApplication = (appData) => {
-    const appRef = `APP-2026-${Math.floor(1000 + Math.random() * 9000)}`;
+    const appRef = generateAppRef();
     const newRecord = {
       id: `app-${Date.now()}`,
       app_ref: appRef,

@@ -1,5 +1,6 @@
 import 'dotenv/config';
 import mysql from 'mysql2/promise';
+import bcrypt from 'bcryptjs';
 
 async function createTablesIfNotExist(connection) {
   const tableSchemas = [
@@ -420,16 +421,29 @@ export async function initializeDatabase() {
         }
       }
     }
-    const connConfig = connectionUrl
-      ? { uri: connectionUrl, ssl: { rejectUnauthorized: false } }
-      : {
-          host: process.env.MYSQLPUBLICHOST || process.env.MYSQLHOST || process.env.DB_HOST || 'localhost',
-          user: process.env.MYSQLUSER || process.env.DB_USER || 'root',
-          password: process.env.MYSQLPASSWORD || process.env.DB_PASSWORD || 'root',
-          database: process.env.MYSQLDATABASE || process.env.DB_NAME || 'kalpanaa_education_db',
-          port: parseInt(process.env.MYSQLPUBLICPORT || process.env.MYSQLPORT || process.env.DB_PORT || '3306'),
-          ssl: (process.env.MYSQLHOST || process.env.MYSQLPUBLICHOST) ? { rejectUnauthorized: false } : undefined
-        };
+    let connConfig;
+    if (connectionUrl) {
+      connConfig = { uri: connectionUrl, ssl: { rejectUnauthorized: false } };
+    } else {
+      const host = process.env.MYSQLPUBLICHOST || process.env.MYSQLHOST || process.env.DB_HOST;
+      const user = process.env.MYSQLUSER || process.env.DB_USER;
+      const password = process.env.MYSQLPASSWORD || process.env.DB_PASSWORD;
+      const database = process.env.MYSQLDATABASE || process.env.DB_NAME;
+
+      if (!host || !user || !database) {
+        console.error('❌ FATAL ERROR: Database configuration missing in init_db.js.');
+        return;
+      }
+
+      connConfig = {
+        host,
+        user,
+        password: password || '',
+        database,
+        port: parseInt(process.env.MYSQLPUBLICPORT || process.env.MYSQLPORT || process.env.DB_PORT || '3306'),
+        ssl: (process.env.MYSQLHOST || process.env.MYSQLPUBLICHOST) ? { rejectUnauthorized: false } : undefined
+      };
+    }
 
     const connection = await mysql.createConnection(connConfig);
 
@@ -440,11 +454,12 @@ export async function initializeDatabase() {
     const [admCount] = await connection.query('SELECT COUNT(*) as count FROM admins');
     if (admCount[0].count === 0) {
       console.log('🔑 Seeding default administrator account into MySQL...');
+      const adminPassHash = await bcrypt.hash('admin123', 10);
       await connection.query(`
         INSERT INTO admins (id, employeeId, name, email, password, designation)
         VALUES (?, ?, ?, ?, ?, ?)
         ON DUPLICATE KEY UPDATE name = VALUES(name)
-      `, ['user-admin', 'ADM-001', 'Administrator', 'admin@kalpanaaa.edu', 'admin123', 'Super Administrator & Dean']);
+      `, ['user-admin', 'ADM-001', 'Administrator', 'admin@kalpanaaa.edu', adminPassHash, 'Super Administrator & Dean']);
     }
 
     // Seed Departments if empty

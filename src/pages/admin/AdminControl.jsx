@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useData } from '../../context/DataContext';
+import { getCurrentYear } from '../../utils/idGenerator';
 import { PortalHeader } from '../../components/portal/PortalHeader';
 import { Sidebar } from '../../components/portal/Sidebar';
 import { AdminAuditLogsTable } from '../../components/portal/AdminAuditLogsTable';
@@ -69,13 +70,13 @@ export const AdminControl = () => {
     const studentUsers = users.filter(u => u.role === 'STUDENT');
     let maxNum = 262;
     studentUsers.forEach(u => {
-      const match = String(u.studentId || u.username || '').match(/STU-(?:2026-)?(\d+)/i) || String(u.studentId || u.username || '').match(/(\d+)/);
+      const match = String(u.studentId || u.username || '').match(/STU-(?:\d{4}-)?(\d+)/i) || String(u.studentId || u.username || '').match(/(\d+)/);
       if (match) {
         const num = parseInt(match[1], 10);
         if (!isNaN(num) && num > maxNum) maxNum = num;
       }
     });
-    return `STU-2026-${maxNum + 1}`;
+    return `STU-${getCurrentYear()}-${maxNum + 1}`;
   };
 
   const openModal = (type) => {

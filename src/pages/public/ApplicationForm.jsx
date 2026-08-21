@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Breadcrumbs } from '../../components/common/Breadcrumbs';
 import { useData } from '../../context/DataContext';
+import { generateAppRef } from '../../utils/idGenerator';
 import { CheckCircle2, ArrowRight, Upload, FileText, AlertCircle } from 'lucide-react';
 
 export const ApplicationForm = () => {
@@ -145,7 +146,7 @@ export const ApplicationForm = () => {
             </div>
             <h2 className="text-3xl font-serif font-bold text-navy">Application Submitted Successfully!</h2>
             <p className="text-slate-600 text-sm max-w-md mx-auto leading-relaxed">
-              Your application reference code is <strong className="text-navy bg-slate-100 px-3 py-1 rounded font-num">{applicationRef || `APP-2026-8891`}</strong>. A confirmation email has been dispatched to <strong>{formData.email}</strong>.
+              Your application reference code is <strong className="text-navy bg-slate-100 px-3 py-1 rounded font-num">{applicationRef || generateAppRef()}</strong>. A confirmation email has been dispatched to <strong>{formData.email}</strong>.
             </p>
             <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 max-w-lg mx-auto text-left text-xs text-slate-700 space-y-1.5">
               <div>Applicant Name: <strong>{formData.fullName}</strong></div>

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useData } from '../../context/DataContext';
+import { getCurrentYear, getAcademicYear } from '../../utils/idGenerator';
 import { PortalHeader } from '../../components/portal/PortalHeader';
 import { Sidebar } from '../../components/portal/Sidebar';
 import { UserCheck, FileText, CheckCircle2, XCircle, Clock, Search, Filter, Eye, Download, Printer, ZoomIn, ZoomOut, ShieldCheck, X } from 'lucide-react';
@@ -247,7 +248,7 @@ export const AdminAdmissions = () => {
                         <>
                           <button
                             onClick={() => {
-                              const generateId = `STU-2026-${app.app_ref?.replace(/\D/g, '') || Math.floor(1000 + Math.random() * 9000)}`;
+                              const generateId = `STU-${getCurrentYear()}-${app.app_ref?.replace(/\D/g, '') || Math.floor(1000 + Math.random() * 9000)}`;
                               if (addStudent) {
                                 addStudent({
                                   studentId: generateId,
@@ -521,11 +522,11 @@ export const AdminAdmissions = () => {
                         <div className="flex justify-between items-center text-xs font-sans border-b border-slate-200 pb-3">
                           <div>
                             <span className="text-slate-400 block text-[10px] uppercase font-bold">Offer Letter Ref</span>
-                            <strong className="font-mono text-navy text-sm">OFFER/2026/{pdfDoc.applicant.app_ref}</strong>
+                            <strong className="font-mono text-navy text-sm">OFFER/{getCurrentYear()}/{pdfDoc.applicant.app_ref}</strong>
                           </div>
                           <div className="text-right">
                             <span className="text-slate-400 block text-[10px] uppercase font-bold">Date of Issuance</span>
-                            <strong className="font-num text-navy">August 18, 2026</strong>
+                            <strong className="font-num text-navy">August 18, {getCurrentYear()}</strong>
                           </div>
                         </div>
 
@@ -536,7 +537,7 @@ export const AdminAdmissions = () => {
                             <div><span className="text-slate-400 block text-[10px]">Candidate Name:</span><strong className="text-navy text-sm">{pdfDoc.applicant.full_name}</strong></div>
                             <div><span className="text-slate-400 block text-[10px]">Application Ref:</span><strong className="font-mono text-navy">{pdfDoc.applicant.app_ref}</strong></div>
                             <div><span className="text-slate-400 block text-[10px]">Admitted Program:</span><strong className="text-navy">{pdfDoc.applicant.course}</strong></div>
-                            <div><span className="text-slate-400 block text-[10px]">Assigned Student ID:</span><strong className="font-mono text-emerald-700 font-bold">{`STU-2026-${pdfDoc.applicant.app_ref?.replace(/\D/g, '') || '101'}`}</strong></div>
+                            <div><span className="text-slate-400 block text-[10px]">Assigned Student ID:</span><strong className="font-mono text-emerald-700 font-bold">{`STU-${getCurrentYear()}-${pdfDoc.applicant.app_ref?.replace(/\D/g, '') || '101'}`}</strong></div>
                           </div>
                         </div>
 
@@ -544,7 +545,7 @@ export const AdminAdmissions = () => {
                         <div className="space-y-3 text-xs font-serif leading-relaxed text-slate-700">
                           <p>Dear <strong>{pdfDoc.applicant.full_name}</strong>,</p>
                           <p>
-                            We are delighted to inform you that your application for admission to <strong>{pdfDoc.applicant.course}</strong> at Kalpanaaa Education Institute for the <strong>2026-2027 Academic Session</strong> has been <strong>APPROVED</strong>.
+                            We are delighted to inform you that your application for admission to <strong>{pdfDoc.applicant.course}</strong> at Kalpanaaa Education Institute for the <strong>{getAcademicYear()} Academic Session</strong> has been <strong>APPROVED</strong>.
                           </p>
                           <p>
                             Based on your merit score of <strong>{pdfDoc.applicant.prev_percentage || '88.5%'}</strong> and verified credentials, the Admissions Committee has granted you provisional admission. You may now log into the Student Portal using your Student ID and complete the fee payment and orientation registration.

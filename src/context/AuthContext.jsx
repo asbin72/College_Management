@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { INITIAL_USERS } from '../data/initialMockData';
+import { getCurrentYear, getAcademicYear, generateRegisterNumber } from '../utils/idGenerator';
 
 const AuthContext = createContext();
 
@@ -196,14 +197,14 @@ export const AuthProvider = ({ children, users = [] }) => {
         password: studentData.password || 'student123',
         studentId: `STU-${deptCode}-${uniqueNum}`,
         rollNo: `24${deptCode}1${String(uniqueNum).slice(-3)}`,
-        registerNumber: `REG-2026-${deptCode}-${uniqueNum}`,
+        registerNumber: generateRegisterNumber(deptCode, uniqueNum),
         department: deptName,
         departmentCode: deptCode,
         course: course,
         year: '1st Year',
         semester: 'Semester 1',
         section: 'Sec A',
-        academicYear: '2026-2027',
+        academicYear: getAcademicYear(),
         overallAttendance: '0%',
         attendanceNum: 0,
         gpa: '0.00',

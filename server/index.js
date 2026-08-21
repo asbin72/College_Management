@@ -3,11 +3,16 @@ import express from 'express';
 import cors from 'cors';
 import mysql from 'mysql2/promise';
 import jwt from 'jsonwebtoken';
+import bcrypt from 'bcryptjs';
 import { initializeDatabase } from './init_db.js';
 
 const app = express();
 const PORT = process.env.PORT || process.env.RAILWAY_PORT || 3000;
-const JWT_SECRET = process.env.JWT_SECRET || 'kalpanaaa_super_secret_jwt_key_2026_prod';
+if (!process.env.JWT_SECRET) {
+  console.error('❌ FATAL ERROR: JWT_SECRET environment variable is not defined.');
+  process.exit(1);
+}
+const JWT_SECRET = process.env.JWT_SECRET;
 
 // CORS — universal access for frontend and API clients
 app.use(cors({
@@ -42,11 +47,21 @@ const getDbConfig = () => {
       ssl: { rejectUnauthorized: false }
     };
   }
+  const host = process.env.MYSQLPUBLICHOST || process.env.MYSQLHOST || process.env.DB_HOST;
+  const user = process.env.MYSQLUSER || process.env.DB_USER;
+  const password = process.env.MYSQLPASSWORD || process.env.DB_PASSWORD;
+  const database = process.env.MYSQLDATABASE || process.env.DB_NAME;
+
+  if (!host || !user || !database) {
+    console.error('❌ FATAL ERROR: Database configuration missing. Please specify MYSQL_URL or DB_HOST, DB_USER, DB_NAME environment variables.');
+    process.exit(1);
+  }
+
   return {
-    host: process.env.MYSQLPUBLICHOST || process.env.MYSQLHOST || process.env.DB_HOST || 'localhost',
-    user: process.env.MYSQLUSER || process.env.DB_USER || 'root',
-    password: process.env.MYSQLPASSWORD || process.env.DB_PASSWORD || 'root',
-    database: process.env.MYSQLDATABASE || process.env.DB_NAME || 'kalpanaa_education_db',
+    host,
+    user,
+    password: password || '',
+    database,
     port: parseInt(process.env.MYSQLPUBLICPORT || process.env.MYSQLPORT || process.env.DB_PORT || '3306'),
     waitForConnections: true,
     connectionLimit: 10,
@@ -175,13 +190,12 @@ function broadcastRealTimeEvent(eventType, payload) {
     } catch (e) {
       console.warn(`Failed to send event to client ${client.id}:`, e.message);
     }
-  });
 }
 
 // -------------------------------------------------------------
 // 1. JWT AUTHENTICATION & RBAC SECURITY MIDDLEWARES
 // -------------------------------------------------------------
-function authenticateJWT(req, res, next) {
+function authenticateToken(req, res, next) {
   const authHeader = req.headers.authorization;
   if (authHeader && authHeader.startsWith('Bearer ')) {
     const token = authHeader.split(' ')[1];
@@ -193,11 +207,11 @@ function authenticateJWT(req, res, next) {
       next();
     });
   } else {
-    // If no token header provided, proceed with guest or check if public
-    req.user = null;
-    next();
+    return res.status(401).json({ success: false, message: 'Authentication required. Please log in.' });
   }
 }
+
+const authenticateJWT = authenticateToken;
 
 function requireRole(allowedRoles = []) {
   return (req, res, next) => {
@@ -214,9 +228,98 @@ function requireRole(allowedRoles = []) {
   };
 }
 
+const PUBLIC_API_ALLOWLIST = [
+  { method: 'POST', path: '/api/auth/login' },
+  { method: 'POST', path: '/api/auth/student-signup' },
+  { method: 'POST', path: '/api/admissions/apply' },
+  { method: 'POST', path: '/api/contact' },
+  { method: 'GET', path: '/api/events' },
+  { method: 'GET', path: '/api/announcements' },
+  { method: 'GET', path: '/api/news' },
+  { method: 'GET', path: '/api/courses' },
+  { method: 'GET', path: '/api/subjects' },
+  { method: 'GET', path: '/api/departments' }
+];
+
+function isPublicRoute(method, path) {
+  const cleanPath = path.split('?')[0];
+  return PUBLIC_API_ALLOWLIST.some(item => 
+    item.method === method.toUpperCase() && item.path === cleanPath
+  );
+}
+
+function securityRouteGuard(req, res, next) {
+  const fullPath = req.originalUrl || req.url || '';
+  const cleanPath = fullPath.split('?')[0];
+
+  if (isPublicRoute(req.method, cleanPath)) {
+    return next();
+  }
+
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({ success: false, message: 'Authentication required. Please log in.' });
+  }
+
+  const token = authHeader.split(' ')[1];
+  jwt.verify(token, JWT_SECRET, (err, decoded) => {
+    if (err) {
+      return res.status(403).json({ success: false, message: 'Invalid or expired session token.' });
+    }
+    req.user = decoded;
+
+    const method = req.method.toUpperCase();
+    if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(method)) {
+      const p = cleanPath;
+      const role = req.user?.role;
+
+      if (p.startsWith('/api/admin') || p.startsWith('/api/announcements')) {
+        if (role !== 'ADMIN') {
+          return res.status(403).json({ success: false, message: `Forbidden: ${method} ${p} requires ADMIN role.` });
+        }
+      } else if (p.startsWith('/api/teachers') || p.startsWith('/api/students') || p.startsWith('/api/departments') || p.startsWith('/api/courses') || p.startsWith('/api/subjects') || p.startsWith('/api/faculty-assignments')) {
+        if (role !== 'ADMIN') {
+          return res.status(403).json({ success: false, message: `Forbidden: ${method} ${p} requires ADMIN role.` });
+        }
+      } else if (p.startsWith('/api/attendance') || p.startsWith('/api/teacher-attendance') || p.startsWith('/api/marks') || p.startsWith('/api/assignments')) {
+        if (!['ADMIN', 'TEACHER'].includes(role)) {
+          return res.status(403).json({ success: false, message: `Forbidden: ${method} ${p} requires ADMIN or TEACHER role.` });
+        }
+      } else {
+        if (!['ADMIN', 'TEACHER', 'STUDENT'].includes(role)) {
+          return res.status(403).json({ success: false, message: `Forbidden: Unauthorized role '${role}'.` });
+        }
+      }
+    }
+
+    next();
+  });
+}
+
+app.use('/api', securityRouteGuard);
+
 // -------------------------------------------------------------
 // 2. AUTHENTICATION ENDPOINTS
 // -------------------------------------------------------------
+async function verifyAndMigratePassword(inputPassword, storedPassword, tableName, rowId) {
+  if (!storedPassword) return false;
+  let isValid = false;
+  if (storedPassword.startsWith('$2a$') || storedPassword.startsWith('$2b$')) {
+    isValid = await bcrypt.compare(inputPassword, storedPassword);
+  } else {
+    isValid = (inputPassword === storedPassword);
+    if (isValid) {
+      try {
+        const hashed = await bcrypt.hash(inputPassword, 10);
+        await dbPool.query(`UPDATE ${tableName} SET password = ? WHERE id = ?`, [hashed, rowId]);
+      } catch (e) {
+        console.error(`Failed to migrate password hash for ${tableName} ${rowId}:`, e);
+      }
+    }
+  }
+  return isValid;
+}
+
 app.post('/api/auth/login', async (req, res) => {
   const { identifier, password } = req.body;
   if (!identifier || !password) {
@@ -230,73 +333,87 @@ app.post('/api/auth/login', async (req, res) => {
     // 1. Check Admins
     const [admRows] = await dbPool.query(
       `SELECT * FROM admins 
-       WHERE (LOWER(email) = ? OR LOWER(email) = ? OR employeeId = ? OR id = ? OR ? IN ('admin@kalpanaaa.edu', 'admin@kalpanaa.edu', 'admin')) 
-         AND (password = ? OR ? IN ('admin', 'admin123', '123456')) 
+       WHERE (LOWER(email) = ? OR LOWER(email) = ? OR employeeId = ? OR id = ?) 
        LIMIT 1`,
-      [normalizedId, normalizedId.replace('kalpanaa.edu', 'kalpanaaa.edu'), cleanId, cleanId, normalizedId, password, password]
+      [normalizedId, normalizedId.replace('kalpanaa.edu', 'kalpanaaa.edu'), cleanId, cleanId]
     );
 
     if (admRows.length > 0) {
       const u = admRows[0];
-      const token = jwt.sign(
-        { id: u.id, name: u.name, email: u.email, role: 'ADMIN', employeeId: u.employeeId },
-        JWT_SECRET,
-        { expiresIn: '7d' }
-      );
-      return res.json({
-        success: true,
-        token,
-        user: { ...u, role: 'ADMIN' }
-      });
+      const isValid = await verifyAndMigratePassword(password, u.password, 'admins', u.id);
+      if (isValid) {
+        const token = jwt.sign(
+          { id: u.id, name: u.name, email: u.email, role: 'ADMIN', employeeId: u.employeeId },
+          JWT_SECRET,
+          { expiresIn: '7d' }
+        );
+        const { password: _, ...userWithoutPass } = u;
+        return res.json({
+          success: true,
+          token,
+          user: { ...userWithoutPass, role: 'ADMIN' }
+        });
+      }
     }
 
     // 2. Check Teachers (Staff)
     const [tchRows] = await dbPool.query(
       `SELECT * FROM teachers 
-       WHERE (LOWER(email) = ? OR LOWER(email) = ? OR employeeId = ? OR id = ? OR ? IN ('teacher@kalpanaaa.edu', 'teacher@kalpanaa.edu', 'teacher')) 
-         AND (password = ? OR ? IN ('teacher123', 'admin123', '123456', 'admin')) 
+       WHERE (LOWER(email) = ? OR LOWER(email) = ? OR employeeId = ? OR id = ?) 
        LIMIT 1`,
-      [normalizedId, normalizedId.replace('kalpanaa.edu', 'kalpanaaa.edu'), cleanId, cleanId, normalizedId, password, password]
+      [normalizedId, normalizedId.replace('kalpanaa.edu', 'kalpanaaa.edu'), cleanId, cleanId]
     );
 
     if (tchRows.length > 0) {
       const u = tchRows[0];
-      const token = jwt.sign(
-        { id: u.id, name: u.name, email: u.email, role: 'TEACHER', employeeId: u.employeeId },
-        JWT_SECRET,
-        { expiresIn: '7d' }
-      );
-      return res.json({
-        success: true,
-        token,
-        user: { ...u, role: 'TEACHER' }
-      });
+      const isValid = await verifyAndMigratePassword(password, u.password, 'teachers', u.id);
+      if (isValid) {
+        const token = jwt.sign(
+          { id: u.id, name: u.name, email: u.email, role: 'TEACHER', employeeId: u.employeeId },
+          JWT_SECRET,
+          { expiresIn: '7d' }
+        );
+        const { password: _, ...userWithoutPass } = u;
+        return res.json({
+          success: true,
+          token,
+          user: { ...userWithoutPass, role: 'TEACHER' }
+        });
+      }
     }
 
     // 3. Check Students
     const [stdRows] = await dbPool.query(
       `SELECT * FROM students 
-       WHERE (LOWER(email) = ? OR LOWER(email) = ? OR studentId = ? OR rollNo = ? OR registerNumber = ? OR id = ? OR ? IN ('student@kalpanaaa.edu', 'student@kalpanaa.edu', 'student')) 
-         AND (password = ? OR ? IN ('student123', 'admin123', '123456', 'admin')) 
+       WHERE (LOWER(email) = ? OR LOWER(email) = ? OR studentId = ? OR rollNo = ? OR registerNumber = ? OR id = ?) 
        LIMIT 1`,
-      [normalizedId, normalizedId.replace('kalpanaa.edu', 'kalpanaaa.edu'), cleanId, cleanId, cleanId, cleanId, normalizedId, password, password]
+      [normalizedId, normalizedId.replace('kalpanaa.edu', 'kalpanaaa.edu'), cleanId, cleanId, cleanId, cleanId]
     );
 
     if (stdRows.length > 0) {
       const u = stdRows[0];
-      const token = jwt.sign(
-        { id: u.id, name: u.name, email: u.email, role: 'STUDENT', studentId: u.studentId },
-        JWT_SECRET,
-        { expiresIn: '7d' }
-      );
-      return res.json({
-        success: true,
-        token,
-        user: { ...u, role: 'STUDENT' }
-      });
+      const isValid = await verifyAndMigratePassword(password, u.password, 'students', u.id);
+      if (isValid) {
+        const token = jwt.sign(
+          { id: u.id, name: u.name, email: u.email, role: 'STUDENT', studentId: u.studentId },
+          JWT_SECRET,
+          { expiresIn: '7d' }
+        );
+        const { password: _, ...userWithoutPass } = u;
+        return res.json({
+          success: true,
+          token,
+          user: { ...userWithoutPass, role: 'STUDENT' }
+        });
+      }
     }
 
-    return res.status(401).json({ success: false, message: 'Invalid credentials. User not found in database.' });
+    return res.status(401).json({ success: false, message: 'Invalid credentials. User not found or incorrect password.' });
+  } catch (err) {
+    console.error('Login error:', err);
+    return res.status(500).json({ success: false, message: 'Internal server error during login.' });
+  }
+});
 
   } catch (err) {
     console.error('Login error:', err);
@@ -359,11 +476,13 @@ app.post('/api/auth/student-signup', async (req, res) => {
     const rollNo = `24${deptCode}1${String(uniqueNum).slice(-3)}`;
     const regNo = `REG-2026-${deptCode}-${uniqueNum}`;
 
+    const hashedPassword = await bcrypt.hash(cleanPass, 10);
+
     const newStudent = {
       id,
       name: cleanName,
       email: cleanEmail,
-      password: cleanPass,
+      password: hashedPassword,
       studentId,
       rollNo,
       registerNumber: regNo,
@@ -478,9 +597,16 @@ app.put('/api/profile', async (req, res) => {
 // -------------------------------------------------------------
 // 4. DATA REST ENDPOINTS (STUDENTS, TEACHERS, SUBJECTS, ETC.)
 // -------------------------------------------------------------
-app.get('/api/students', async (req, res) => {
+app.get('/api/students', authenticateToken, requireRole(['ADMIN', 'TEACHER', 'STUDENT']), async (req, res) => {
   try {
-    const [rows] = await dbPool.query('SELECT * FROM students ORDER BY name ASC');
+    const [rows] = await dbPool.query(`
+      SELECT id, studentId, rollNo, registerNumber, name, email, department, departmentCode,
+             course, year, semester, section, classId, academicYear, overallAttendance,
+             attendanceNum, gpa, pendingFees, phone, dob, gender, bloodGroup, address,
+             bio, guardianName, guardianPhone, avatar, photoUrl, admissionYear, status, created_at 
+      FROM students 
+      ORDER BY name ASC
+    `);
     res.json(rows.map(r => ({ ...r, role: 'STUDENT', studentId: r.studentId || r.id })));
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -549,6 +675,9 @@ app.post('/api/students', async (req, res) => {
       }
     }
 
+    const rawPass = s.password || 'student123';
+    const passHash = (rawPass.startsWith('$2a$') || rawPass.startsWith('$2b$')) ? rawPass : await bcrypt.hash(rawPass, 10);
+
     await dbPool.query(`
       INSERT INTO students (
         id, name, email, password, studentId, rollNo, registerNumber,
@@ -559,7 +688,7 @@ app.post('/api/students', async (req, res) => {
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON DUPLICATE KEY UPDATE name = VALUES(name), email = VALUES(email), department = VALUES(department), status = VALUES(status)
     `, [
-      id, s.name, s.email, s.password || 'student123', studentId,
+      id, s.name, s.email, passHash, studentId,
       s.rollNo || studentId, s.registerNumber || `REG-${Date.now()}`,
       s.department || 'Computer Science and Engineering', s.departmentCode || 'CSE',
       s.course || 'B.Tech Computer Science & Engineering', s.year || '1st Year',
@@ -588,9 +717,15 @@ app.delete('/api/students/:id', async (req, res) => {
   }
 });
 
-app.get('/api/teachers', async (req, res) => {
+app.get('/api/teachers', authenticateToken, requireRole(['ADMIN', 'TEACHER', 'STUDENT']), async (req, res) => {
   try {
-    const [rows] = await dbPool.query('SELECT * FROM teachers ORDER BY name ASC');
+    const [rows] = await dbPool.query(`
+      SELECT id, employeeId, name, email, department, designation, phone, qualification,
+             experienceYears, experience, joiningDate, specialization, assignedClasses,
+             bio, avatar, photoUrl, status, created_at 
+      FROM teachers 
+      ORDER BY name ASC
+    `);
     res.json(rows.map(r => ({ ...r, role: 'TEACHER', employeeId: r.employeeId || r.id })));
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -607,6 +742,9 @@ app.post('/api/teachers', async (req, res) => {
       const nextNum = (maxRows[0]?.maxId || 118) + 1;
       empId = `EMP-${nextNum}`;
     }
+    const rawPass = t.password || 'teacher123';
+    const passHash = (rawPass.startsWith('$2a$') || rawPass.startsWith('$2b$')) ? rawPass : await bcrypt.hash(rawPass, 10);
+
     await dbPool.query(`
       INSERT INTO teachers (
         id, name, email, password, employeeId, designation, department,
@@ -614,7 +752,7 @@ app.post('/api/teachers', async (req, res) => {
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON DUPLICATE KEY UPDATE name = VALUES(name), designation = VALUES(designation), department = VALUES(department)
     `, [
-      id, t.name, t.email, t.password || 'teacher123', empId,
+      id, t.name, t.email, passHash, empId,
       t.designation || 'Assistant Professor', t.department || 'Computer Science and Engineering',
       t.qualification || 'M.Tech / Ph.D.', t.specialization || 'Engineering',
       t.experience || '5 Years', t.phone || '', t.bio || '',
@@ -1466,7 +1604,33 @@ app.post('/api/marks', async (req, res) => {
   }
 });
 
-app.post('/api/helpdesk', async (req, res) => {
+app.post('/api/contact', async (req, res) => {
+  const { name, email, phone, subject, message } = req.body || {};
+  if (!name || !email || !message) {
+    return res.status(400).json({ success: false, message: 'Name, email, and message are required.' });
+  }
+
+  const id = `TKT-${Math.floor(1000 + Math.random() * 9000)}`;
+  const today = new Date().toISOString().split('T')[0];
+  const fullDesc = `Public Contact Message from ${name} (${email}, Phone: ${phone || 'N/A'}):\n\n${message}`;
+
+  try {
+    await dbPool.query(
+      `INSERT INTO helpdesk_tickets (id, ticketNumber, subject, category, priority, status, source, targetDesk, studentId, studentName, staffId, staffName, department, description, replies, date)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        id, id, `[Contact Us] ${subject || 'General Inquiry'}`, 'Public Inquiry', 'Medium', 'Open', 'PUBLIC_CONTACT',
+        'Admin Desk', null, name, null, null, 'General', fullDesc,
+        JSON.stringify([]), today
+      ]
+    );
+
+    broadcastRealTimeEvent('HELPDESK_TICKET_SUBMITTED', { id, subject: `[Contact Us] ${subject || 'General Inquiry'}`, source: 'PUBLIC_CONTACT' });
+    res.json({ success: true, message: 'Contact message received successfully.' });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
   const t = req.body;
   const id = t.id || `TKT-${Math.floor(1000 + Math.random() * 9000)}`;
   const applicantName = t.applicantName || t.studentName || t.staffName || 'Applicant';
@@ -1714,7 +1878,15 @@ app.get('/api/results/student/:studentId', async (req, res) => {
   }
 });
 // Clean all demo data endpoint (preserves Admins & Departments)
-app.post('/api/admin/clean-demo-data', async (req, res) => {
+app.post('/api/admin/clean-demo-data', authenticateToken, requireRole(['ADMIN']), async (req, res) => {
+  const { confirm, confirmationString } = req.body || {};
+  if (confirm !== 'CONFIRM_DELETE' && confirmationString !== 'CONFIRM_DELETE') {
+    return res.status(400).json({ 
+      success: false, 
+      message: 'Destructive action blocked. Requiring confirmation string "CONFIRM_DELETE" in request body.' 
+    });
+  }
+
   try {
     await dbPool.query("DELETE FROM students");
     await dbPool.query("DELETE FROM teachers");

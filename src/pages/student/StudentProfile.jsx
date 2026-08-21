@@ -431,28 +431,34 @@ export const StudentProfile = () => {
                   </h3>
                   <span className="text-[10px] font-sans font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded">Requires Admin Approval to Change</span>
                 </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs font-sans">
+                  <div>
+                    <label className="block text-slate-500 font-bold uppercase mb-1">Parent / Guardian Name</label>
+                    <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 font-bold">{parentName}</div>
+                  </div>
 
-  const parentName = currentUser.parentName || currentUser.guardianName || (isNewStudent ? 'Not Registered' : 'Ramesh Patel');
-  const parentRelation = currentUser.parentRelation || currentUser.guardianRelation || 'Father';
-  const parentPhone = currentUser.parentPhone || currentUser.guardianPhone || (isNewStudent ? 'Not Registered' : '+91 98765 00000');
-  const parentEmail = currentUser.parentEmail || currentUser.guardianEmail || (isNewStudent ? 'Not Registered' : 'ramesh.patel@gmail.com');
-  const parentOccupation = currentUser.parentOccupation || currentUser.guardianOccupation || 'Engineer / Professional';
-  const dob = currentUser.dob || currentUser.dateOfBirth || '2004-05-14';
-  const gender = currentUser.gender || 'Specified in Admission';
-  const bloodGroup = currentUser.bloodGroup || 'O+ (Verified)';
-  
-  // Calculate admission year and batch from semester or student ID
-  const semNum = parseInt(String(semester).replace(/[^0-9]/g, ''), 10) || 1;
-  const startYear = currentUser.admissionYear || (new Date().getFullYear() - Math.floor((semNum - 1) / 2));
-  const batchRange = `Batch ${startYear}-${startYear + (department.includes('MBA') ? 2 : 4)}`;
+                  <div>
+                    <label className="block text-slate-500 font-bold uppercase mb-1">Relationship</label>
+                    <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 font-semibold">{parentRelation}</div>
+                  </div>
 
-  return (
-    <div className="flex min-h-screen bg-slate-100 font-sans relative">
-      <Sidebar mobileOpen={mobileOpen} setMobileOpen={setMobileOpen} />
-      <div className="flex-1 flex flex-col min-w-0">
-        <PortalHeader setMobileOpen={setMobileOpen} />
+                  <div>
+                    <label className="block text-slate-500 font-bold uppercase mb-1">Parent Mobile Number</label>
+                    <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 font-num font-semibold">{parentPhone}</div>
+                  </div>
 
-        <main className="p-4 sm:p-6 space-y-6 flex-1 overflow-y-auto">
+                  <div>
+                    <label className="block text-slate-500 font-bold uppercase mb-1">Parent Email</label>
+                    <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 font-semibold">{parentEmail}</div>
+                  </div>
+
+                  <div className="sm:col-span-2">
+                    <label className="block text-slate-500 font-bold uppercase mb-1">Occupation & Organization</label>
+                    <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 font-semibold">{parentOccupation}</div>
+                  </div>
+                </div>
+              </div>
+            </div>
           
           {/* Notification Toast */}
           {toastMsg && (
@@ -843,7 +849,9 @@ export const StudentProfile = () => {
 
           </div>
 
-        </main>
+        </div>
+
+      </main>
       </div>
 
       {/* REQUEST OFFICIAL CHANGE MODAL */}
