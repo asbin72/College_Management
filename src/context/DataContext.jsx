@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useMemo } from 'react';
 import { getCurrentYear, getAcademicYear, generateRegisterNumber, generateTransactionId, generateAppRef } from '../utils/idGenerator';
+import { getAuthHeaders } from '../utils/apiClient';
 import {
   INITIAL_USERS,
   INITIAL_DEPARTMENTS,

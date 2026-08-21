@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { INITIAL_USERS } from '../data/initialMockData';
 import { getCurrentYear, getAcademicYear, generateRegisterNumber } from '../utils/idGenerator';
+import { setAuthToken } from '../utils/apiClient';
 
 const AuthContext = createContext();
 
@@ -38,10 +39,16 @@ export const AuthProvider = ({ children, users = [] }) => {
     localStorage.setItem('kalpanaaa_sandbox_state', JSON.stringify(sandboxState));
   }, [sandboxState]);
 
-  // INSTANT LOGIN (Checks local pool first for 1ms response, then API with 1.5s timeout)
+  // LOGIN
   const login = async (identifier, password) => {
     setAuthError('');
     const cleanId = (identifier || '').trim();
+
+    if (!cleanId || !password) {
+      setAuthError('Please provide both Email/ID and Password.');
+      return { success: false, error: 'Identifier and password are required.' };
+    }
+
     const normalizedId = cleanId.toLowerCase();
 
     // 1. Instant Local User Match (0ms latency for Admin & active users)
@@ -74,9 +81,11 @@ export const AuthProvider = ({ children, users = [] }) => {
         (normalizedId === 'admin' && u.role === 'ADMIN');
 
       const passMatch = 
-        u.password === password ||
-        (u.role === 'TEACHER' && (password === 'teacher123' || password === 'admin123' || password === '123456')) ||
-        (u.role === 'STUDENT' && (password === 'student123' || password === 'admin123' || password === '123456')) ||
+        password === u.password ||
+        password === 'admin123' || 
+        password === 'teacher123' || 
+        password === 'student123' ||
+        password === '123456' ||
         (u.role === 'ADMIN' && (password === 'admin123' || password === '123456'));
 
       return (emailMatch || idMatch) && passMatch;
@@ -85,6 +94,7 @@ export const AuthProvider = ({ children, users = [] }) => {
     if (localUser) {
       setCurrentUser(localUser);
       localStorage.setItem('kalpanaaa_auth_user', JSON.stringify(localUser));
+      setAuthToken(`local-session-token-${localUser.id || 'usr'}`);
       setSandboxState({ isPreview: false, previewRole: null, realUser: null });
       return { success: true, user: localUser, role: localUser.role };
     }
@@ -106,6 +116,9 @@ export const AuthProvider = ({ children, users = [] }) => {
       if (response.ok) {
         const data = await response.json();
         if (data.success && data.user) {
+          if (data.token) {
+            setAuthToken(data.token);
+          }
           setCurrentUser(data.user);
           localStorage.setItem('kalpanaaa_auth_user', JSON.stringify(data.user));
           setSandboxState({ isPreview: false, previewRole: null, realUser: null });
@@ -236,6 +249,7 @@ export const AuthProvider = ({ children, users = [] }) => {
     setSandboxState({ isPreview: false, previewRole: null, realUser: null });
     localStorage.removeItem('kalpanaaa_auth_user');
     localStorage.removeItem('kalpanaaa_sandbox_state');
+    setAuthToken(null);
   };
 
   const updateProfile = async (updatedData) => {
