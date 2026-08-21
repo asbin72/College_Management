@@ -5,6 +5,7 @@ import { PortalHeader } from '../../components/portal/PortalHeader';
 import { Sidebar } from '../../components/portal/Sidebar';
 import { Plus, Search, X, Trash2, CheckCircle2 } from 'lucide-react';
 import { DEPARTMENTS, YEARS, SEMESTERS } from '../../data/collegeDataGenerator';
+import { getTeacherWorkloadStudentCount } from '../../utils/idGenerator';
 
 export const AdminTeachers = () => {
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -240,6 +241,7 @@ export const AdminTeachers = () => {
                       filteredTeachers.map(tch => {
                         const empId = tch.employeeId || tch.username || tch.id;
                         const assignmentsCount = (facultyClassAssignments || []).filter(f => f.facultyId === empId).length;
+                        const teacherStudentsCount = getTeacherWorkloadStudentCount(empId, tch.name, facultyClassAssignments, users);
 
                         return (
                           <tr key={tch.id} className="hover:bg-slate-50">
@@ -268,11 +270,11 @@ export const AdminTeachers = () => {
                                 </span>
                               ) : assignmentsCount <= 2 ? (
                                 <span className="px-2.5 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                                  {assignmentsCount} {assignmentsCount === 1 ? 'Class' : 'Classes'} ({assignmentsCount * 10} Students) &bull; Active Workload
+                                  {assignmentsCount} {assignmentsCount === 1 ? 'Class' : 'Classes'} ({teacherStudentsCount} {teacherStudentsCount === 1 ? 'Student' : 'Students'}) &bull; Active Workload
                                 </span>
                               ) : (
                                 <span className="px-2.5 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-300">
-                                  {assignmentsCount} Classes ({assignmentsCount * 10} Students) &bull; Heavy Load
+                                  {assignmentsCount} Classes ({teacherStudentsCount} {teacherStudentsCount === 1 ? 'Student' : 'Students'}) &bull; Heavy Load
                                 </span>
                               )}
                             </td>
@@ -449,24 +451,27 @@ export const AdminTeachers = () => {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 font-sans">
-                      {(facultyClassAssignments || []).map(fca => (
-                        <tr key={fca.assignmentId} className="hover:bg-slate-50">
-                          <td className="p-3 font-mono font-bold text-navy">{fca.assignmentId}</td>
-                          <td className="p-3 font-bold text-slate-800">{fca.facultyName}</td>
-                          <td className="p-3 font-bold text-slate-600">{fca.departmentCode}</td>
-                          <td className="p-3 font-bold text-slate-700">{fca.year} ({fca.semester})</td>
-                          <td className="p-3 font-bold text-slate-900">{fca.subjectName} ({fca.subjectCode})</td>
-                          <td className="p-3 font-num font-bold text-emerald-700">{fca.studentCount || 10} Students</td>
-                          <td className="p-3 text-right">
-                            <button
-                              onClick={() => removeFacultyClassAssignment(fca.assignmentId, currentUser)}
-                              className="px-2.5 py-1 bg-red-100 hover:bg-red-200 text-red-700 font-bold rounded text-[10px]"
-                            >
-                              Unassign
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
+                      {(facultyClassAssignments || []).map(fca => {
+                        const count = getEnrolledStudentCount(fca, users);
+                        return (
+                          <tr key={fca.assignmentId} className="hover:bg-slate-50">
+                            <td className="p-3 font-mono font-bold text-navy">{fca.assignmentId}</td>
+                            <td className="p-3 font-bold text-slate-800">{fca.facultyName}</td>
+                            <td className="p-3 font-bold text-slate-600">{fca.departmentCode}</td>
+                            <td className="p-3 font-bold text-slate-700">{fca.year} ({fca.semester})</td>
+                            <td className="p-3 font-bold text-slate-900">{fca.subjectName} ({fca.subjectCode})</td>
+                            <td className="p-3 font-num font-bold text-emerald-700">{count} {count === 1 ? 'Student' : 'Students'}</td>
+                            <td className="p-3 text-right">
+                              <button
+                                onClick={() => removeFacultyClassAssignment(fca.assignmentId, currentUser)}
+                                className="px-2.5 py-1 bg-red-100 hover:bg-red-200 text-red-700 font-bold rounded text-[10px]"
+                              >
+                                Unassign
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>

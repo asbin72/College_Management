@@ -71,19 +71,26 @@ export const generateFacultyAndAssignments = (offerings = []) => {
 
     const classId = `CLS-${offering.departmentCode || 'ENG'}-${offering.year.charAt(0)}-${offering.semester.replace(/\s+/g, '').toUpperCase()}-${offering.code.replace(/[^a-zA-Z0-9]/g, '')}`;
 
+    const offeringDeptCode = offering.departmentCode || 'CSE';
+    const studentsInCohort = INITIAL_USERS.filter(u =>
+      u.role === 'STUDENT' && (
+        !offeringDeptCode || !u.departmentCode || u.departmentCode.toUpperCase() === offeringDeptCode.toUpperCase()
+      )
+    ).length;
+
     assignments.push({
       assignmentId: `FAC-ASN-${String(asnIdx++).padStart(3, '0')}`,
       classId,
       facultyId: matchingTeacher.employeeId || matchingTeacher.id || 'EMP-101',
       facultyName: matchingTeacher.name || 'Faculty Staff',
-      departmentCode: offering.departmentCode || 'CSE',
+      departmentCode: offeringDeptCode,
       departmentName: offering.department || 'Computer Science and Engineering',
       year: offering.year,
       semester: offering.semester,
       section: 'Sec A',
       subjectCode: offering.code,
       subjectName: offering.name,
-      studentCount: 10,
+      studentCount: studentsInCohort,
       academicYear: '2026-2027',
       assignedDate: '2026-08-01',
       startDate: '2026-08-01',

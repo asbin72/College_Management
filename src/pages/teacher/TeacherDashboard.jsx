@@ -5,10 +5,11 @@ import { PortalHeader } from '../../components/portal/PortalHeader';
 import { Sidebar } from '../../components/portal/Sidebar';
 import { Clock, AlertCircle, ArrowRight, AlertTriangle } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
+import { getEnrolledStudentCount } from '../../utils/idGenerator';
 
 export const TeacherDashboard = () => {
   const { currentUser } = useAuth();
-  const { facultyClassAssignments, leaveRequests, helpdesk, announcements, attendance, examinations } = useData();
+  const { facultyClassAssignments, users = [], leaveRequests, helpdesk, announcements, attendance, examinations } = useData();
   const [mobileOpen, setMobileOpen] = useState(false);
   const navigate = useNavigate();
 
@@ -28,7 +29,7 @@ export const TeacherDashboard = () => {
   const activeAssignments = myAssignments.length > 0 ? myAssignments : facultyClassAssignments.slice(0, 3);
 
   // ── Dynamic: total students across all assigned classes ───────────────────
-  const totalStudentsCount = activeAssignments.reduce((acc, curr) => acc + (curr.studentCount || 0), 0);
+  const totalStudentsCount = activeAssignments.reduce((acc, curr) => acc + getEnrolledStudentCount(curr, users), 0);
 
   // ── Dynamic: average students per class ───────────────────────────────────
   const avgStudentsPerClass = activeAssignments.length > 0
@@ -216,7 +217,7 @@ export const TeacherDashboard = () => {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               {activeAssignments.map((fca, idx) => {
                 const classAttPct = getClassAttendance(fca.classId || fca.subjectCode);
-                const enrolledCount = fca.studentCount || 0;
+                const enrolledCount = getEnrolledStudentCount(fca, users);
                 return (
                   <div key={fca.assignmentId} className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200 hover:border-gold hover:shadow-md transition-all flex flex-col justify-between space-y-4">
                     

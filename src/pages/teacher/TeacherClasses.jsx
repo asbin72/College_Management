@@ -6,10 +6,11 @@ import { Sidebar } from '../../components/portal/Sidebar';
 import { Search, Calendar, Download, ArrowRight } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { generateGoogleCalendarLink, downloadICalFile } from '../../services/calendarSyncService';
+import { getEnrolledStudentCount } from '../../utils/idGenerator';
 
 export const TeacherClasses = () => {
   const { currentUser } = useAuth();
-  const { facultyClassAssignments, attendance = [] } = useData();
+  const { facultyClassAssignments, users = [], attendance = [] } = useData();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [selectedYear, setSelectedYear] = useState('All');
   const [searchQuery, setSearchQuery] = useState('');
@@ -27,7 +28,7 @@ export const TeacherClasses = () => {
 
   const activeAssignments = myFacultyAssignments.length > 0 ? myFacultyAssignments : facultyClassAssignments.slice(0, 3);
 
-  const totalStudentsCount = activeAssignments.reduce((sum, fca) => sum + (fca.studentCount || 0), 0);
+  const totalStudentsCount = activeAssignments.reduce((sum, fca) => sum + getEnrolledStudentCount(fca, users), 0);
 
   const filteredAssignments = activeAssignments.filter(fca => {
     const matchesYear = selectedYear === 'All' || fca.year === selectedYear;
@@ -150,7 +151,7 @@ export const TeacherClasses = () => {
                 <tbody className="divide-y divide-slate-100 font-sans">
                   {filteredAssignments.map(fca => {
                     const classAtt = getClassAttendance(fca);
-                    const studentCount = fca.studentCount || 0;
+                    const studentCount = getEnrolledStudentCount(fca, users);
                     return (
                       <tr key={fca.assignmentId} className="hover:bg-slate-50">
                         <td className="p-3 font-bold text-navy">{fca.departmentCode}</td>
@@ -160,7 +161,7 @@ export const TeacherClasses = () => {
                           {fca.subjectName}
                           <span className="block text-[10px] text-slate-400 font-mono font-normal">Code: {fca.subjectCode}</span>
                         </td>
-                        <td className="p-3 font-num font-bold text-slate-700">{studentCount > 0 ? `${studentCount} Students` : 'N/A'}</td>
+                        <td className="p-3 font-num font-bold text-slate-700">{studentCount > 0 ? `${studentCount} ${studentCount === 1 ? 'Student' : 'Students'}` : 'N/A'}</td>
                         <td className="p-3 font-num font-bold">
                           {classAtt !== null ? (
                             <span className={classAtt >= 75 ? 'text-emerald-700' : 'text-rose-600'}>

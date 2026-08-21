@@ -846,6 +846,12 @@ export const DataProvider = ({ children }) => {
     }
 
     const classId = `CLS-${allocationData.departmentCode || 'ENG'}-${allocationData.year.charAt(0)}-${allocationData.semester.replace(/\s+/g, '').toUpperCase()}-${allocationData.subjectCode}`;
+    const realCohortCount = users.filter(u =>
+      (u.role === 'STUDENT' || (u.studentId && String(u.studentId).startsWith('STU'))) &&
+      (!allocationData.departmentCode || !u.departmentCode || String(u.departmentCode).toUpperCase() === String(allocationData.departmentCode).toUpperCase()) &&
+      (!allocationData.year || !u.year || String(u.year).toLowerCase() === String(allocationData.year).toLowerCase())
+    ).length;
+
     const newAssignment = {
       assignmentId: `FCA-${getCurrentYear()}-${Math.floor(100 + Math.random() * 900)}`,
       classId,
@@ -858,10 +864,10 @@ export const DataProvider = ({ children }) => {
       subjectCode: allocationData.subjectCode,
       subjectName: allocationData.subjectName,
       academicYear: getAcademicYear(),
-      studentCount: 10,
+      studentCount: realCohortCount > 0 ? realCohortCount : users.filter(u => u.role === 'STUDENT').length,
       assignedDate: new Date().toISOString().split('T')[0],
-      startDate: '2026-08-01',
-      endDate: '2026-12-20',
+      startDate: `${getCurrentYear()}-08-01`,
+      endDate: `${getCurrentYear()}-12-20`,
       status: 'ACTIVE'
     };
 
