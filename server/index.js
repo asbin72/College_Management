@@ -190,6 +190,7 @@ function broadcastRealTimeEvent(eventType, payload) {
     } catch (e) {
       console.warn(`Failed to send event to client ${client.id}:`, e.message);
     }
+  });
 }
 
 // -------------------------------------------------------------
@@ -412,12 +413,6 @@ app.post('/api/auth/login', async (req, res) => {
   } catch (err) {
     console.error('Login error:', err);
     return res.status(500).json({ success: false, message: 'Internal server error during login.' });
-  }
-});
-
-  } catch (err) {
-    console.error('Login error:', err);
-    res.status(500).json({ success: false, error: err.message });
   }
 });
 
@@ -1631,6 +1626,8 @@ app.post('/api/contact', async (req, res) => {
     res.status(500).json({ success: false, message: err.message });
   }
 });
+
+app.post('/api/helpdesk', async (req, res) => {
   const t = req.body;
   const id = t.id || `TKT-${Math.floor(1000 + Math.random() * 9000)}`;
   const applicantName = t.applicantName || t.studentName || t.staffName || 'Applicant';
