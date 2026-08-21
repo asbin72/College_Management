@@ -2,6 +2,7 @@
   "name": "kalpanaa-education",
   "private": true,
   "version": "1.0.0",
+  "main": "index.js",
   "type": "module",
   "allowScripts": {
     "esbuild": true
@@ -11,7 +12,7 @@
   },
   "scripts": {
     "dev": "vite",
-    "start": "node server/index.js",
+    "start": "node index.js",
     "start:client": "vite",
     "start:server": "node server/index.js",
     "db:clear": "node scripts/clear_all_demo_data.js",
