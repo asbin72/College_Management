@@ -28,7 +28,6 @@ export const Sidebar = ({ mobileOpen, setMobileOpen }) => {
   const teacherLinks = [
     { label: 'Dashboard', path: '/staff/dashboard', icon: LayoutDashboard },
     { label: 'Attendance', path: '/staff/attendance', icon: Clock },
-    { label: 'Assigned Students', path: '/staff/students', icon: Users },
     { label: 'Assignments', path: '/staff/assignments', icon: FileText },
     { label: 'Marks', path: '/staff/marks', icon: FileSpreadsheet },
     { label: 'Assigned Courses', path: '/staff/courses', icon: BookOpen },

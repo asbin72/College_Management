@@ -60,7 +60,6 @@ import { TeacherAttendance } from './pages/teacher/TeacherAttendance';
 import { TeacherAssignments } from './pages/teacher/TeacherAssignments';
 import { TeacherExams } from './pages/teacher/TeacherExams';
 import { TeacherMarks } from './pages/teacher/TeacherMarks';
-import { TeacherStudents } from './pages/teacher/TeacherStudents';
 import { TeacherLeave } from './pages/teacher/TeacherLeave';
 import { TeacherHelpdesk } from './pages/teacher/TeacherHelpdesk';
 
@@ -186,7 +185,6 @@ function AppRoutes() {
         <Route path="/staff/courses" element={<RoleGuard allowedRoles={['TEACHER', 'STAFF']}><TeacherClasses /></RoleGuard>} />
         <Route path="/staff/classes/:classId" element={<RoleGuard allowedRoles={['TEACHER', 'STAFF', 'ADMIN']}><TeacherClassDetail /></RoleGuard>} />
         <Route path="/staff/subjects" element={<RoleGuard allowedRoles={['TEACHER', 'STAFF']}><TeacherSubjects /></RoleGuard>} />
-        <Route path="/staff/students" element={<RoleGuard allowedRoles={['TEACHER', 'STAFF']}><TeacherStudents /></RoleGuard>} />
         <Route path="/staff/attendance" element={<RoleGuard allowedRoles={['TEACHER', 'STAFF']}><TeacherAttendance /></RoleGuard>} />
         <Route path="/staff/assignments" element={<RoleGuard allowedRoles={['TEACHER', 'STAFF']}><TeacherAssignments /></RoleGuard>} />
         <Route path="/staff/exams" element={<RoleGuard allowedRoles={['TEACHER', 'STAFF']}><TeacherExams /></RoleGuard>} />
@@ -202,7 +200,6 @@ function AppRoutes() {
         <Route path="/teacher/profile" element={<Navigate to="/staff/profile" replace />} />
         <Route path="/teacher/classes" element={<Navigate to="/staff/courses" replace />} />
         <Route path="/teacher/subjects" element={<Navigate to="/staff/subjects" replace />} />
-        <Route path="/teacher/students" element={<Navigate to="/staff/students" replace />} />
         <Route path="/teacher/attendance" element={<Navigate to="/staff/attendance" replace />} />
         <Route path="/teacher/assignments" element={<Navigate to="/staff/assignments" replace />} />
         <Route path="/teacher/exams" element={<Navigate to="/staff/exams" replace />} />
