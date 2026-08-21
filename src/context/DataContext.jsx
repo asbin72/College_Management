@@ -59,7 +59,11 @@ export const DataProvider = ({ children }) => {
   
   const [departments, setDepartments] = useState(() => safeLoadStorage('kalpanaaa_data_departments_v5', INITIAL_DEPARTMENTS));
 
-  const [courses, setCourses] = useState(() => safeLoadStorage('kalpanaaa_data_courses_v5', INITIAL_COURSES));
+  const [courses, setCourses] = useState(() => {
+    const cached = safeLoadStorage('kalpanaaa_data_courses_v5', null);
+    if (cached && Array.isArray(cached) && cached.length >= INITIAL_COURSES.length) return cached;
+    return INITIAL_COURSES;
+  });
 
   const [subjects, setSubjects] = useState(() => safeLoadStorage('kalpanaaa_data_subjects_v5', INITIAL_SUBJECTS));
 

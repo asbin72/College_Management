@@ -13,7 +13,12 @@ export const Courses = () => {
   const [deptFilter, setDeptFilter] = useState('ALL');
   const [levelFilter, setLevelFilter] = useState('ALL');
 
-  const displayCourses = (courses && courses.length > 0 && courses[0].subjects) ? courses : INITIAL_COURSES;
+  // Guaranteed display of all accredited UG & PG degree programs merged with any custom context courses
+  const displayCourses = Array.from(
+    new Map(
+      [...INITIAL_COURSES, ...(courses || [])].map(c => [c.id || c.code || c.name, c])
+    ).values()
+  );
 
   const filteredCourses = (displayCourses || []).filter(course => {
     const subjectsStr = Array.isArray(course.subjects) ? course.subjects.join(' ') : '';
