@@ -9,7 +9,7 @@ import { generateGoogleCalendarLink, downloadICalFile } from '../../services/cal
 
 export const TeacherClasses = () => {
   const { currentUser } = useAuth();
-  const { facultyClassAssignments } = useData();
+  const { facultyClassAssignments, attendance = [] } = useData();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [selectedYear, setSelectedYear] = useState('All');
   const [searchQuery, setSearchQuery] = useState('');
@@ -18,7 +18,7 @@ export const TeacherClasses = () => {
   if (!currentUser) return null;
 
   const currentFacultyId = currentUser.employeeId || currentUser.username || currentUser.id || 'EMP-101';
-  const teacherName = currentUser.name || 'Dr. Rahul Kumar';
+  const teacherName = currentUser.name || 'Faculty Member';
 
   // Get active assignments for logged-in faculty
   const myFacultyAssignments = facultyClassAssignments.filter(
@@ -27,6 +27,8 @@ export const TeacherClasses = () => {
 
   const activeAssignments = myFacultyAssignments.length > 0 ? myFacultyAssignments : facultyClassAssignments.slice(0, 3);
 
+  const totalStudentsCount = activeAssignments.reduce((sum, fca) => sum + (fca.studentCount || 0), 0);
+
   const filteredAssignments = activeAssignments.filter(fca => {
     const matchesYear = selectedYear === 'All' || fca.year === selectedYear;
     const matchesSearch = fca.subjectName.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -34,6 +36,17 @@ export const TeacherClasses = () => {
                           fca.departmentCode.toLowerCase().includes(searchQuery.toLowerCase());
     return matchesYear && matchesSearch;
   });
+
+  const getClassAttendance = (fca) => {
+    const classRecords = (attendance || []).filter(
+      a => a.classId === fca.classId || a.subjectCode === fca.subjectCode
+    );
+    if (!classRecords.length) return null;
+    const presentCount = classRecords.filter(a =>
+      (a.status || '').toLowerCase() === 'present'
+    ).length;
+    return Math.round((presentCount / classRecords.length) * 100);
+  };
 
   const handleExportICal = (fca) => {
     downloadICalFile({
@@ -83,7 +96,7 @@ export const TeacherClasses = () => {
               </div>
 
               <div className="text-right flex-shrink-0 font-num font-bold text-navy text-xs bg-slate-50 p-3 rounded-xl border border-slate-200">
-                <span>Active Classes: <strong>{activeAssignments.length}</strong></span> &bull; <span>Total Students: <strong>{activeAssignments.length * 10}</strong></span>
+                <span>Active Classes: <strong>{activeAssignments.length}</strong></span> &bull; <span>Total Students: <strong>{totalStudentsCount}</strong></span>
               </div>
             </div>
           </div>
@@ -135,43 +148,55 @@ export const TeacherClasses = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 font-sans">
-                  {filteredAssignments.map(fca => (
-                    <tr key={fca.assignmentId} className="hover:bg-slate-50">
-                      <td className="p-3 font-bold text-navy">{fca.departmentCode}</td>
-                      <td className="p-3 font-bold text-slate-700">{fca.year}</td>
-                      <td className="p-3 font-mono text-slate-500">{fca.semester}</td>
-                      <td className="p-3 font-bold text-slate-900">
-                        {fca.subjectName}
-                        <span className="block text-[10px] text-slate-400 font-mono font-normal">Code: {fca.subjectCode}</span>
-                      </td>
-                      <td className="p-3 font-num font-bold text-slate-700">{fca.studentCount || 10} Students</td>
-                      <td className="p-3 font-num font-bold text-emerald-700">90% Avg</td>
-                      <td className="p-3 text-right">
-                        <div className="flex items-center justify-end space-x-2">
-                          <button
-                            onClick={() => handleExportICal(fca)}
-                            title="Download iCal (.ics) timetable file"
-                            className="p-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-[11px] font-semibold flex items-center"
-                          >
-                            <Download className="w-3.5 h-3.5 mr-1" /> iCal
-                          </button>
-                          <button
-                            onClick={() => handleOpenGoogleCalendar(fca)}
-                            title="Add lecture to Google Calendar"
-                            className="p-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-[11px] font-semibold flex items-center"
-                          >
-                            <Calendar className="w-3.5 h-3.5 mr-1" /> Sync
-                          </button>
-                          <button
-                            onClick={() => navigate(`/staff/classes/${fca.classId}`)}
-                            className="px-3.5 py-1.5 bg-navy hover:bg-navy-light text-gold font-bold rounded-lg text-xs shadow flex items-center"
-                          >
-                            Manage <ArrowRight className="w-3.5 h-3.5 ml-1" />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
+                  {filteredAssignments.map(fca => {
+                    const classAtt = getClassAttendance(fca);
+                    const studentCount = fca.studentCount || 0;
+                    return (
+                      <tr key={fca.assignmentId} className="hover:bg-slate-50">
+                        <td className="p-3 font-bold text-navy">{fca.departmentCode}</td>
+                        <td className="p-3 font-bold text-slate-700">{fca.year}</td>
+                        <td className="p-3 font-mono text-slate-500">{fca.semester}</td>
+                        <td className="p-3 font-bold text-slate-900">
+                          {fca.subjectName}
+                          <span className="block text-[10px] text-slate-400 font-mono font-normal">Code: {fca.subjectCode}</span>
+                        </td>
+                        <td className="p-3 font-num font-bold text-slate-700">{studentCount > 0 ? `${studentCount} Students` : 'N/A'}</td>
+                        <td className="p-3 font-num font-bold">
+                          {classAtt !== null ? (
+                            <span className={classAtt >= 75 ? 'text-emerald-700' : 'text-rose-600'}>
+                              {classAtt}% Avg
+                            </span>
+                          ) : (
+                            <span className="text-slate-400">—</span>
+                          )}
+                        </td>
+                        <td className="p-3 text-right">
+                          <div className="flex items-center justify-end space-x-2">
+                            <button
+                              onClick={() => handleExportICal(fca)}
+                              title="Download iCal (.ics) timetable file"
+                              className="p-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-[11px] font-semibold flex items-center"
+                            >
+                              <Download className="w-3.5 h-3.5 mr-1" /> iCal
+                            </button>
+                            <button
+                              onClick={() => handleOpenGoogleCalendar(fca)}
+                              title="Add lecture to Google Calendar"
+                              className="p-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-[11px] font-semibold flex items-center"
+                            >
+                              <Calendar className="w-3.5 h-3.5 mr-1" /> Sync
+                            </button>
+                            <button
+                              onClick={() => navigate(`/staff/classes/${fca.classId}`)}
+                              className="px-3.5 py-1.5 bg-navy hover:bg-navy-light text-gold font-bold rounded-lg text-xs shadow flex items-center"
+                            >
+                              Manage <ArrowRight className="w-3.5 h-3.5 ml-1" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
