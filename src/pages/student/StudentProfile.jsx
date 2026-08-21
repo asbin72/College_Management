@@ -432,30 +432,330 @@ export const StudentProfile = () => {
                   <span className="text-[10px] font-sans font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded">Requires Admin Approval to Change</span>
                 </div>
 
+  const parentName = currentUser.parentName || currentUser.guardianName || (isNewStudent ? 'Not Registered' : 'Ramesh Patel');
+  const parentRelation = currentUser.parentRelation || currentUser.guardianRelation || 'Father';
+  const parentPhone = currentUser.parentPhone || currentUser.guardianPhone || (isNewStudent ? 'Not Registered' : '+91 98765 00000');
+  const parentEmail = currentUser.parentEmail || currentUser.guardianEmail || (isNewStudent ? 'Not Registered' : 'ramesh.patel@gmail.com');
+  const parentOccupation = currentUser.parentOccupation || currentUser.guardianOccupation || 'Engineer / Professional';
+  const dob = currentUser.dob || currentUser.dateOfBirth || '2004-05-14';
+  const gender = currentUser.gender || 'Specified in Admission';
+  const bloodGroup = currentUser.bloodGroup || 'O+ (Verified)';
+  
+  // Calculate admission year and batch from semester or student ID
+  const semNum = parseInt(String(semester).replace(/[^0-9]/g, ''), 10) || 1;
+  const startYear = currentUser.admissionYear || (new Date().getFullYear() - Math.floor((semNum - 1) / 2));
+  const batchRange = `Batch ${startYear}-${startYear + (department.includes('MBA') ? 2 : 4)}`;
+
+  return (
+    <div className="flex min-h-screen bg-slate-100 font-sans relative">
+      <Sidebar mobileOpen={mobileOpen} setMobileOpen={setMobileOpen} />
+      <div className="flex-1 flex flex-col min-w-0">
+        <PortalHeader setMobileOpen={setMobileOpen} />
+
+        <main className="p-4 sm:p-6 space-y-6 flex-1 overflow-y-auto">
+          
+          {/* Notification Toast */}
+          {toastMsg && (
+            <div className="p-4 bg-emerald-500 text-white rounded-xl shadow-lg flex items-center justify-between font-sans text-xs font-bold animate-fadeIn">
+              <div className="flex items-center space-x-2">
+                <CheckCircle2 className="w-5 h-5" />
+                <span>{toastMsg}</span>
+              </div>
+              <button onClick={() => setToastMsg('')} className="text-white hover:text-slate-200">&times;</button>
+            </div>
+          )}
+
+          {requestSubmitted && (
+            <div className="p-4 bg-blue-600 text-white rounded-xl shadow-lg flex items-center justify-between font-sans text-xs font-bold animate-fadeIn">
+              <div className="flex items-center space-x-2">
+                <CheckCircle2 className="w-5 h-5" />
+                <span>Official Information Change Request submitted to Administration! Track status below.</span>
+              </div>
+            </div>
+          )}
+
+          {/* PROFILE HEADER CARD */}
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 sm:p-8 relative overflow-hidden">
+            <div className="flex flex-col md:flex-row items-center md:items-start gap-6">
+              
+              {/* Photo Avatar with File Picker & Presets */}
+              <div className="relative group flex-shrink-0">
+                <div 
+                  onClick={() => setShowPhotoModal(true)}
+                  className="w-28 h-28 sm:w-32 sm:h-32 bg-navy text-gold font-serif font-bold text-4xl rounded-2xl flex items-center justify-center border-4 border-gold/40 shadow-xl overflow-hidden cursor-pointer relative"
+                  title="Click to change profile picture"
+                >
+                  {(currentUser.photoUrl || currentUser.avatar) && !imgError ? (
+                    <img 
+                      src={currentUser.photoUrl || currentUser.avatar} 
+                      alt={studentName} 
+                      onError={() => setImgError(true)}
+                      className="w-full h-full object-cover" 
+                    />
+                  ) : (
+                    <span className="font-serif font-bold text-3xl sm:text-4xl text-gold">
+                      {studentName.split(' ').map(n => n[0]).filter(Boolean).slice(0, 2).join('').toUpperCase() || 'ST'}
+                    </span>
+                  )}
+                  <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+                    <Camera className="w-6 h-6 text-gold" />
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowPhotoModal(true)}
+                  className="absolute bottom-1 right-1 bg-gold hover:bg-gold-hover text-navy-dark p-2 rounded-full shadow-lg cursor-pointer transition-transform hover:scale-110"
+                  title="Upload New Profile Photo"
+                >
+                  <Camera className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Main Info */}
+              <div className="flex-1 text-center md:text-left space-y-2">
+                <div className="flex flex-wrap items-center justify-center md:justify-start gap-2">
+                  <span className="bg-navy text-gold text-[10px] font-sans font-bold uppercase tracking-widest px-3 py-1 rounded-full border border-gold/30">
+                    {course}
+                  </span>
+                  <span className="bg-emerald-100 text-emerald-800 text-[10px] font-sans font-bold uppercase px-3 py-1 rounded-full flex items-center">
+                    <ShieldCheck className="w-3.5 h-3.5 mr-1" />
+                    {status} Student
+                  </span>
+                </div>
+
+                <h1 className="text-2xl sm:text-3xl font-sans font-bold text-navy tracking-tight">{studentName}</h1>
+                
+                <p className="font-serif text-slate-500 text-xs sm:text-sm">
+                  Student ID: <strong className="font-num font-bold text-navy">{studentId}</strong> &bull; Register No: <strong className="font-num font-bold text-slate-700">{regNumber}</strong>
+                </p>
+
+                <div className="pt-2 flex flex-wrap justify-center md:justify-start gap-4 text-xs text-slate-600 font-sans">
+                  <div>Department: <strong className="text-slate-800">{department}</strong></div>
+                  <div>Semester: <strong className="text-navy font-num">{semester}</strong></div>
+                  <div>Section: <strong className="text-slate-800 font-num">{section}</strong></div>
+                  <div>Academic Year: <strong className="text-slate-800 font-num">{academicYear}</strong></div>
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex flex-col gap-2 w-full md:w-auto">
+                <button
+                  onClick={handleSaveProfile}
+                  className="inline-flex items-center justify-center bg-gold hover:bg-gold-hover text-navy-dark font-sans font-bold text-xs px-5 py-3 rounded-xl shadow transition-colors uppercase tracking-wider"
+                >
+                  <Save className="w-4 h-4 mr-2" />
+                  Save Profile Changes
+                </button>
+
+                <button
+                  onClick={() => setShowRequestModal(true)}
+                  className="inline-flex items-center justify-center bg-slate-100 hover:bg-slate-200 text-slate-700 font-sans font-bold text-xs px-4 py-2.5 rounded-xl border border-slate-300 transition-colors uppercase tracking-wider"
+                >
+                  <FileText className="w-4 h-4 mr-2 text-gold-hover" />
+                  Request Official Change
+                </button>
+              </div>
+
+            </div>
+          </div>
+
+          {/* MAIN PROFILE SECTIONS GRID */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            
+            {/* Left 7 Columns: Personal & Guardian Info */}
+            <div className="lg:col-span-7 space-y-6">
+              
+              {/* Personal Information Card */}
+              <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200 space-y-4">
+                <div className="flex justify-between items-center pb-3 border-b border-slate-100">
+                  <h3 className="text-lg font-sans font-bold text-navy tracking-tight flex items-center">
+                    <User className="w-5 h-5 text-gold mr-2" />
+                    Personal Details & Contact Info
+                  </h3>
+                  <span className="text-[10px] font-sans font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded">
+                    Directly Editable Fields Below
+                  </span>
+                </div>
+
+                <form onSubmit={handleSaveProfile} className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs font-sans">
+                  
+                  {/* Read-Only Official Fields */}
+                  <div>
+                    <label className="block text-slate-500 font-bold uppercase mb-1">Full Name (Official Record)</label>
+                    <input type="text" readOnly value={studentName} className="w-full px-3 py-2 bg-slate-100 border border-slate-200 rounded-xl text-slate-700 font-semibold cursor-not-allowed" />
+                  </div>
+
+                  <div>
+                    <label className="block text-slate-500 font-bold uppercase mb-1">Date of Birth</label>
+                    <input type="text" readOnly value={dob} className="w-full px-3 py-2 bg-slate-100 border border-slate-200 rounded-xl text-slate-700 font-num font-semibold cursor-not-allowed" />
+                  </div>
+
+                  <div>
+                    <label className="block text-slate-500 font-bold uppercase mb-1">Gender</label>
+                    <input type="text" readOnly value={gender} className="w-full px-3 py-2 bg-slate-100 border border-slate-200 rounded-xl text-slate-700 font-semibold cursor-not-allowed" />
+                  </div>
+
+                  <div>
+                    <label className="block text-slate-500 font-bold uppercase mb-1">Blood Group</label>
+                    <input type="text" readOnly value={bloodGroup} className="w-full px-3 py-2 bg-slate-100 border border-slate-200 rounded-xl text-slate-700 font-semibold cursor-not-allowed" />
+                  </div>
+
+                  <div>
+                    <label className="block text-slate-500 font-bold uppercase mb-1">Institutional Email</label>
+                    <input type="email" readOnly value={currentUser.email || 'student@kalpanaaa.edu'} className="w-full px-3 py-2 bg-slate-100 border border-slate-200 rounded-xl text-slate-700 font-semibold cursor-not-allowed" />
+                  </div>
+
+                  {/* Student Editable Fields */}
+                  <div>
+                    <label className="block text-navy font-bold uppercase mb-1 flex items-center">
+                      Personal Email *
+                      <Edit3 className="w-3 h-3 ml-1 text-gold" />
+                    </label>
+                    <input
+                      type="email"
+                      required
+                      value={formData.personalEmail}
+                      onChange={(e) => setFormData({ ...formData, personalEmail: e.target.value })}
+                      className="w-full px-3 py-2 bg-white border-2 border-gold/60 focus:border-gold rounded-xl text-slate-800 font-semibold focus:outline-none shadow-sm"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-navy font-bold uppercase mb-1 flex items-center">
+                      Mobile Phone *
+                      <Edit3 className="w-3 h-3 ml-1 text-gold" />
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={formData.phone}
+                      onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                      className="w-full px-3 py-2 bg-white border-2 border-gold/60 focus:border-gold rounded-xl text-slate-800 font-num font-semibold focus:outline-none shadow-sm"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-navy font-bold uppercase mb-1 flex items-center">
+                      Alternate Phone
+                      <Edit3 className="w-3 h-3 ml-1 text-gold" />
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.altPhone}
+                      onChange={(e) => setFormData({ ...formData, altPhone: e.target.value })}
+                      className="w-full px-3 py-2 bg-white border-2 border-gold/60 focus:border-gold rounded-xl text-slate-800 font-num focus:outline-none shadow-sm"
+                    />
+                  </div>
+
+                  <div className="sm:col-span-2">
+                    <label className="block text-navy font-bold uppercase mb-1 flex items-center">
+                      Current Residential Address *
+                      <Edit3 className="w-3 h-3 ml-1 text-gold" />
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={formData.address}
+                      onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                      className="w-full px-3 py-2 bg-white border-2 border-gold/60 focus:border-gold rounded-xl text-slate-800 focus:outline-none shadow-sm"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-navy font-bold uppercase mb-1 flex items-center">
+                      City
+                      <Edit3 className="w-3 h-3 ml-1 text-gold" />
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.city}
+                      onChange={(e) => setFormData({ ...formData, city: e.target.value })}
+                      className="w-full px-3 py-2 bg-white border-2 border-gold/60 focus:border-gold rounded-xl text-slate-800 focus:outline-none shadow-sm"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-navy font-bold uppercase mb-1 flex items-center">
+                      State / PIN Code
+                      <Edit3 className="w-3 h-3 ml-1 text-gold" />
+                    </label>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={formData.state}
+                        onChange={(e) => setFormData({ ...formData, state: e.target.value })}
+                        className="w-2/3 px-3 py-2 bg-white border-2 border-gold/60 focus:border-gold rounded-xl text-slate-800 focus:outline-none shadow-sm"
+                      />
+                      <input
+                        type="text"
+                        value={formData.pinCode}
+                        onChange={(e) => setFormData({ ...formData, pinCode: e.target.value })}
+                        className="w-1/3 px-3 py-2 bg-white border-2 border-gold/60 focus:border-gold rounded-xl text-slate-800 font-num focus:outline-none shadow-sm"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="sm:col-span-2">
+                    <label className="block text-navy font-bold uppercase mb-1 flex items-center">
+                      Emergency Contact Person & Phone *
+                      <Edit3 className="w-3 h-3 ml-1 text-gold" />
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={formData.emergencyContact}
+                      onChange={(e) => setFormData({ ...formData, emergencyContact: e.target.value })}
+                      className="w-full px-3 py-2 bg-white border-2 border-gold/60 focus:border-gold rounded-xl text-slate-800 focus:outline-none shadow-sm"
+                    />
+                  </div>
+
+                  <div className="sm:col-span-2 pt-2">
+                    <button
+                      type="submit"
+                      className="w-full py-3 bg-gold hover:bg-gold-hover text-navy-dark font-sans font-bold text-xs uppercase tracking-wider rounded-xl shadow-md flex items-center justify-center"
+                    >
+                      <Save className="w-4 h-4 mr-2" />
+                      Save & Update Profile Details
+                    </button>
+                  </div>
+
+                </form>
+              </div>
+
+              {/* Parent / Guardian Information Card */}
+              <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200 space-y-4">
+                <div className="flex justify-between items-center pb-3 border-b border-slate-100">
+                  <h3 className="text-lg font-sans font-bold text-navy tracking-tight flex items-center">
+                    <ShieldCheck className="w-5 h-5 text-gold mr-2" />
+                    Parent / Guardian Details
+                  </h3>
+                  <span className="text-[10px] font-sans font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded">Requires Admin Approval to Change</span>
+                </div>
+
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs font-sans">
                   <div>
                     <label className="block text-slate-500 font-bold uppercase mb-1">Parent / Guardian Name</label>
-                    <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 font-bold">Ramesh Patel</div>
+                    <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 font-bold">{parentName}</div>
                   </div>
 
                   <div>
                     <label className="block text-slate-500 font-bold uppercase mb-1">Relationship</label>
-                    <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 font-semibold">Father</div>
+                    <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 font-semibold">{parentRelation}</div>
                   </div>
 
                   <div>
                     <label className="block text-slate-500 font-bold uppercase mb-1">Parent Mobile Number</label>
-                    <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 font-num font-semibold">+91 98765 00000</div>
+                    <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 font-num font-semibold">{parentPhone}</div>
                   </div>
 
                   <div>
                     <label className="block text-slate-500 font-bold uppercase mb-1">Parent Email</label>
-                    <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 font-semibold">ramesh.patel@gmail.com</div>
+                    <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 font-semibold">{parentEmail}</div>
                   </div>
 
                   <div className="sm:col-span-2">
                     <label className="block text-slate-500 font-bold uppercase mb-1">Occupation & Organization</label>
-                    <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 font-semibold">Senior Electrical Engineer, Siemens Energy India</div>
+                    <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 font-semibold">{parentOccupation}</div>
                   </div>
                 </div>
               </div>
@@ -498,7 +798,7 @@ export const StudentProfile = () => {
 
                   <div className="flex justify-between p-2.5 bg-slate-50 rounded-xl border border-slate-200">
                     <span className="text-slate-500 font-bold">Admission Year:</span>
-                    <strong className="font-num text-slate-800">2023</strong>
+                    <strong className="font-num text-slate-800">{startYear}</strong>
                   </div>
 
                   <div className="flex justify-between p-2.5 bg-slate-50 rounded-xl border border-slate-200">
@@ -508,7 +808,7 @@ export const StudentProfile = () => {
 
                   <div className="flex justify-between p-2.5 bg-slate-50 rounded-xl border border-slate-200">
                     <span className="text-slate-500 font-bold">Section / Batch:</span>
-                    <strong className="font-num text-slate-800">{section} (Batch 2023-2027)</strong>
+                    <strong className="font-num text-slate-800">{section} ({batchRange})</strong>
                   </div>
                 </div>
               </div>

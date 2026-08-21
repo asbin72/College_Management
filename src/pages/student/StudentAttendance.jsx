@@ -481,8 +481,8 @@ export const StudentAttendance = () => {
                   onChange={(e) => setIssueForm({ ...issueForm, subject: e.target.value })}
                   className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs"
                 >
-                  {attendance.map(a => (
-                    <option key={a.subject} value={a.subject}>{a.subject}</option>
+                  {matchedSubjects.map(sub => (
+                    <option key={sub.code} value={`${sub.code} ${sub.name}`}>{sub.code} - {sub.name}</option>
                   ))}
                 </select>
               </div>

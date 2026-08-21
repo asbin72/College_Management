@@ -15,7 +15,9 @@ export const StudentFees = () => {
   const [showPayModal, setShowPayModal] = useState(false);
   const [paymentSuccess, setPaymentSuccess] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState('UPI'); // 'UPI' | 'CARD' | 'NETBANKING'
-  const [selectedFeeCategory, setSelectedFeeCategory] = useState('Tuition Fee - Semester 6');
+  const studentPendingBalance = currentUser?.pendingFees !== undefined ? Number(currentUser.pendingFees) : 0;
+  const semName = currentUser?.semester || 'Semester 1';
+  const [selectedFeeCategory, setSelectedFeeCategory] = useState(`Tuition Fee - ${semName}`);
   const [paymentAmount, setPaymentAmount] = useState(15000);
   const [upiId, setUpiId] = useState('');
   const [cardNumber, setCardNumber] = useState('');
@@ -37,8 +39,6 @@ export const StudentFees = () => {
     description: ''
   });
 
-  const studentPendingBalance = currentUser?.pendingFees !== undefined ? Number(currentUser.pendingFees) : 0;
-  const semName = currentUser?.semester || 'Semester 1';
   const isNewStudent = currentUser?.isNewUser || (currentUser?.studentId?.startsWith('STU-') && !['STU-2024-001', 'STU-CSE-101'].includes(currentUser?.studentId));
 
   // Fee Breakdown List State
@@ -232,7 +232,7 @@ export const StudentFees = () => {
             <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-200 text-center">
               <span className="text-[10px] font-sans font-bold text-slate-400 uppercase block">TOTAL ANNUAL FEES</span>
               <span className="text-xl sm:text-2xl font-num font-bold text-navy block mt-1">₹ {totalFees.toLocaleString()}</span>
-              <span className="text-[10px] font-serif text-slate-500">Academic Year 2026</span>
+              <span className="text-[10px] font-serif text-slate-500">Academic Year {new Date().getFullYear()}</span>
             </div>
 
             <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-200 text-center">
@@ -244,13 +244,17 @@ export const StudentFees = () => {
             <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-200 text-center">
               <span className="text-[10px] font-sans font-bold text-slate-400 uppercase block">PENDING DUES</span>
               <span className="text-xl sm:text-2xl font-num font-bold text-amber-600 block mt-1">₹ {totalPending.toLocaleString()}</span>
-              <span className="text-[10px] font-serif text-amber-700 font-semibold">Due by 15 Aug</span>
+              <span className="text-[10px] font-serif text-amber-700 font-semibold">
+                {totalPending > 0 ? 'Payment Outstanding' : 'No Pending Dues'}
+              </span>
             </div>
 
             <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-200 text-center">
               <span className="text-[10px] font-sans font-bold text-slate-400 uppercase block">NEXT DUE DATE</span>
-              <span className="text-sm font-num font-bold text-navy block mt-2">15 Aug 2026</span>
-              <span className="text-[10px] font-serif text-slate-500">Semester 6 Fee</span>
+              <span className="text-sm font-num font-bold text-navy block mt-2">
+                {feeBreakdown.find(f => f.pending > 0)?.dueDate || 'Term Cleared'}
+              </span>
+              <span className="text-[10px] font-serif text-slate-500">{semName} Fee</span>
             </div>
 
             <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-200 text-center">
@@ -415,7 +419,7 @@ export const StudentFees = () => {
                     onChange={(e) => setSelectedFeeCategory(e.target.value)}
                     className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs"
                   >
-                    <option value="Tuition Fee - Semester 6">Tuition Fee - Semester 6 (Pending ₹15,000)</option>
+                    <option value={`Tuition Fee - ${semName}`}>Tuition Fee - {semName} (Pending ₹{studentPendingBalance.toLocaleString()})</option>
                     <option value="Examination & Evaluation Fee">Examination & Evaluation Fee (₹15,000)</option>
                   </select>
                 </div>

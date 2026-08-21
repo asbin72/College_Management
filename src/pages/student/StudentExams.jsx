@@ -132,6 +132,11 @@ export const StudentExams = () => {
     window.print();
   };
 
+  const semNum = parseInt(String(semester).replace(/[^0-9]/g, ''), 10) || 1;
+  const startYr = currentUser.admissionYear || (new Date().getFullYear() - Math.floor((semNum - 1) / 2));
+  const batchYears = `${startYr}-${startYr + (studentDeptCode === 'MBA' ? 2 : 4)}`;
+  const examCenterLocation = currentUser.examCenter || 'Main Campus Central Examination Complex';
+
   return (
     <div className="flex min-h-screen bg-slate-100 font-sans relative">
       <Sidebar mobileOpen={mobileOpen} setMobileOpen={setMobileOpen} />
@@ -398,8 +403,8 @@ export const StudentExams = () => {
                   <div>Register Number: <strong className="font-num text-slate-800">{regNumber}</strong></div>
                   <div>Course: <strong>{course}</strong></div>
                   <div>Semester: <strong className="font-num">{semester}</strong></div>
-                  <div>Section / Batch: <strong className="font-num">{section} (2023-2027)</strong></div>
-                  <div className="col-span-2">Examination Center: <strong>Knowledge Corridor Campus, Sector 12, New Delhi</strong></div>
+                  <div>Section / Batch: <strong className="font-num">{section} ({batchYears})</strong></div>
+                  <div className="col-span-2">Examination Center: <strong>{examCenterLocation}</strong></div>
                 </div>
 
                 <div className="w-24 h-28 bg-slate-200 border-2 border-navy rounded-lg flex items-center justify-center font-serif text-slate-400 text-xs text-center p-1 flex-shrink-0">
