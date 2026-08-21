@@ -5,6 +5,7 @@ import { PortalHeader } from '../../components/portal/PortalHeader';
 import { Sidebar } from '../../components/portal/Sidebar';
 import { Plus, Edit, Power, Search, X, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react';
 import { SEMESTERS } from '../../data/collegeDataGenerator';
+import { INITIAL_SUBJECTS } from '../../data/initialMockData';
 
 export const AdminSubjects = () => {
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -28,10 +29,12 @@ export const AdminSubjects = () => {
 
   const teachers = users.filter(u => u.role === 'TEACHER' || u.role === 'STAFF');
 
-  // Master Subject List: combine subjects and offerings cleanly
-  const rawSubjectList = (subjects && subjects.length > 0) 
-    ? subjects 
-    : (subjectOfferings && subjectOfferings.length > 0 ? subjectOfferings : []);
+  // Master Subject List: combine initial subjects, subjects, and offerings cleanly
+  const rawSubjectList = Array.from(
+    new Map(
+      [...INITIAL_SUBJECTS, ...(subjects || []), ...(subjectOfferings || [])].map(s => [s.id || s.code || s.name, s])
+    ).values()
+  );
 
   const normStr = (str) => (str || '').toLowerCase().replace(/&/g, 'and').replace(/[^a-z0-9]/g, '');
 

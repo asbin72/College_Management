@@ -4,6 +4,7 @@ import { useData } from '../../context/DataContext';
 import { PortalHeader } from '../../components/portal/PortalHeader';
 import { Sidebar } from '../../components/portal/Sidebar';
 import { Plus, Edit, Power, Trash2, Search, X, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react';
+import { INITIAL_COURSES } from '../../data/initialMockData';
 
 export const AdminCourses = () => {
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -33,10 +34,12 @@ export const AdminCourses = () => {
 
   const teachers = users.filter(u => u.role === 'TEACHER' || u.role === 'STAFF');
 
-  // Master Course List: combine courses from DB and offerings
-  const rawCourseList = (courses && courses.length > 0) 
-    ? courses 
-    : (subjectOfferings && subjectOfferings.length > 0 ? subjectOfferings : []);
+  // Master Degree Courses List
+  const rawCourseList = Array.from(
+    new Map(
+      [...INITIAL_COURSES, ...(courses || [])].map(c => [c.id || c.code || c.name, c])
+    ).values()
+  );
 
   const normStr = (str) => (str || '').toLowerCase().replace(/&/g, 'and').replace(/[^a-z0-9]/g, '');
 

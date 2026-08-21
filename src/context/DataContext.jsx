@@ -65,11 +65,15 @@ export const DataProvider = ({ children }) => {
     return INITIAL_COURSES;
   });
 
-  const [subjects, setSubjects] = useState(() => safeLoadStorage('kalpanaaa_data_subjects_v5', INITIAL_SUBJECTS));
+  const [subjects, setSubjects] = useState(() => {
+    const cached = safeLoadStorage('kalpanaaa_data_subjects_v5', null);
+    if (cached && Array.isArray(cached) && cached.length >= INITIAL_SUBJECTS.length) return cached;
+    return INITIAL_SUBJECTS;
+  });
 
   const [subjectOfferings, setSubjectOfferings] = useState(() => {
     const cached = safeLoadStorage('kalpanaaa_data_subject_offerings_v5', null);
-    if (cached) return cached;
+    if (cached && Array.isArray(cached) && cached.length >= INITIAL_SUBJECTS.length) return cached;
     return generateSubjectOfferings();
   });
 
