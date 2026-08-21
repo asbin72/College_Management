@@ -13,12 +13,27 @@ export const Courses = () => {
   const [deptFilter, setDeptFilter] = useState('ALL');
   const [levelFilter, setLevelFilter] = useState('ALL');
 
-  // Guaranteed display of all accredited UG & PG degree programs merged with any custom context courses
+  // Display only valid accredited UG & PG degree programs, excluding individual subjects like "C Programming"
   const displayCourses = Array.from(
     new Map(
       [...INITIAL_COURSES, ...(courses || [])].map(c => [c.id || c.code || c.name, c])
     ).values()
-  );
+  ).filter(c => {
+    const name = (c.name || '').trim();
+    const code = (c.code || '').trim();
+    const id = (c.id || '').trim();
+    const level = (c.level || c.type || '').trim();
+
+    if (name.toLowerCase().includes('c programming') && !name.toLowerCase().includes('b.tech')) return false;
+    
+    // Must be a recognized degree program (B.Tech, MBA, M.Tech, etc.)
+    return id.startsWith('deg-') || 
+           level.includes('Undergraduate') || 
+           level.includes('Postgraduate') || 
+           level.includes('Degree') || 
+           /\b(b\.?tech|mba|m\.?tech|bachelor|master|degree)\b/i.test(name) ||
+           /\b(b\.?tech|mba|m\.?tech)\b/i.test(code);
+  });
 
   const filteredCourses = (displayCourses || []).filter(course => {
     const subjectsStr = Array.isArray(course.subjects) ? course.subjects.join(' ') : '';

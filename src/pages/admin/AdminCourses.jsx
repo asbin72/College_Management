@@ -34,12 +34,26 @@ export const AdminCourses = () => {
 
   const teachers = users.filter(u => u.role === 'TEACHER' || u.role === 'STAFF');
 
-  // Master Degree Courses List
+  // Master Degree Courses List (filtering out single subjects like C Programming)
   const rawCourseList = Array.from(
     new Map(
       [...INITIAL_COURSES, ...(courses || [])].map(c => [c.id || c.code || c.name, c])
     ).values()
-  );
+  ).filter(c => {
+    const name = (c.name || '').trim();
+    const code = (c.code || '').trim();
+    const id = (c.id || '').trim();
+    const level = (c.level || c.type || '').trim();
+
+    if (name.toLowerCase().includes('c programming') && !name.toLowerCase().includes('b.tech')) return false;
+
+    return id.startsWith('deg-') || 
+           level.includes('Undergraduate') || 
+           level.includes('Postgraduate') || 
+           level.includes('Degree') || 
+           /\b(b\.?tech|mba|m\.?tech|bachelor|master|degree)\b/i.test(name) ||
+           /\b(b\.?tech|mba|m\.?tech)\b/i.test(code);
+  });
 
   const normStr = (str) => (str || '').toLowerCase().replace(/&/g, 'and').replace(/[^a-z0-9]/g, '');
 
