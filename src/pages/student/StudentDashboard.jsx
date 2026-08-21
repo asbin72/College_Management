@@ -82,7 +82,7 @@ export const StudentDashboard = () => {
   const studentGpa = myResultSummary ? (myResultSummary.cgpa || myResultSummary.sgpa || '0.00') : (
     myPublishedMarks.length > 0
       ? (myPublishedMarks.reduce((acc, curr) => acc + (Number(curr.marksObtained || 0) / 25), 0) / myPublishedMarks.length).toFixed(2)
-      : (currentUser.gpa && currentUser.gpa !== '3.75' ? currentUser.gpa : '0.00')
+      : (currentUser.gpa || '0.00')
   );
   const gpaNumVal = parseFloat(studentGpa) || 0;
 
@@ -105,30 +105,33 @@ export const StudentDashboard = () => {
 
   const myCurriculumSubjects = deptSubjects.length > 0 ? deptSubjects : fallbackSubjects;
 
-  const timeslots = [
-    { time: "09:30 AM - 10:45 AM", room: `${studentDeptCode} Lecture Hall 101`, status: "Completed" },
-    { time: "11:00 AM - 12:15 PM", room: `${studentDeptCode} Lecture Hall 202`, status: "Ongoing" },
-    { time: "02:00 PM - 03:30 PM", room: `${studentDeptCode} Advanced Lab 3`, status: "Upcoming" },
-    { time: "03:45 PM - 05:00 PM", room: `${studentDeptCode} Seminar Room`, status: "Upcoming" }
+  // ── Dynamic: derive timetable slots from subjectOfferings or use sensible fallback labels ──
+  const PERIOD_LABELS = [
+    '08:30 AM – 09:20 AM',
+    '09:20 AM – 10:10 AM',
+    '10:30 AM – 11:20 AM',
+    '11:20 AM – 12:10 PM',
+    '01:00 PM – 01:50 PM',
+    '01:50 PM – 02:40 PM',
+    '02:40 PM – 03:30 PM',
+    '03:30 PM – 04:20 PM',
   ];
 
-  const scheduleList = timeslots.slice(0, 3).map((slot, idx) => {
-    const sub = myCurriculumSubjects[idx] || myCurriculumSubjects[0] || { code: `${studentDeptCode}-10${idx + 1}`, name: `${studentDept} Core Theory ${idx + 1}` };
+  const scheduleList = myCurriculumSubjects.slice(0, 4).map((sub, idx) => {
+    // Use schedule fields from subject data if available, else use period label
+    const time = sub.scheduleTime || sub.time || PERIOD_LABELS[idx % PERIOD_LABELS.length];
+    const room = sub.room || sub.venue || sub.hall || `${studentDeptCode} Lecture Hall ${101 + idx}`;
+    const statusOptions = ['Completed', 'Ongoing', 'Upcoming', 'Upcoming'];
     return {
-      time: slot.time,
+      time,
       subject: `${sub.code} - ${sub.name}`,
-      room: slot.room,
+      room,
       teacher: sub.assignedTeacherName || 'Department Faculty',
-      status: slot.status
+      status: statusOptions[idx] || 'Upcoming'
     };
   });
 
-  const nextLecture = scheduleList[0] || {
-    time: "09:30 AM - 10:45 AM",
-    subject: `${studentDeptCode}-101 ${studentDept} Foundation Lecture`,
-    room: `Lecture Hall ${studentDeptCode}-101`,
-    teacher: 'Department Faculty'
-  };
+  const nextLecture = scheduleList[0] || null;
 
   const visibleSchedule = showAllSchedule ? scheduleList : scheduleList.slice(0, 1);
 
@@ -184,6 +187,7 @@ export const StudentDashboard = () => {
           </div>
 
           {/* Next Up Today Schedule Banner */}
+          {nextLecture ? (
           <div className="bg-gradient-to-r from-navy via-navy-light to-navy-dark text-white p-5 sm:p-6 rounded-2xl shadow-md border border-navy-light flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div className="space-y-1">
               <div className="flex items-center space-x-2">
@@ -208,6 +212,11 @@ export const StudentDashboard = () => {
               </Link>
             </div>
           </div>
+          ) : (
+          <div className="bg-slate-50 border border-slate-200 p-5 rounded-2xl text-center text-slate-400 text-xs">
+            No subjects assigned for your course yet. Check back after the semester begins.
+          </div>
+          )}
 
           {/* Quick Metrics Grid with Visual Progress Rings & GPA Radial Gauge */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5">

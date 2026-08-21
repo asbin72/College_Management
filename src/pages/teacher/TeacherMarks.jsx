@@ -27,17 +27,35 @@ export const TeacherMarks = () => {
   const [successMsg, setSuccessMsg] = useState('');
   const [isImporterOpen, setIsImporterOpen] = useState(false);
 
-  const currentExamObj = examinations.find(ex => ex.id === selectedExamId) || displayExams[0] || {
-    id: 'EXAM-2026-01',
-    name: 'Spring 2026 Assessment',
-    subjectCode: 'CS-601',
-    subjectName: 'Artificial Intelligence',
-    maxMarks: 100,
-    course: 'B.Tech Computer Science & Engineering'
+  const currentExamObj = examinations.find(ex => ex.id === selectedExamId) || displayExams[0] || null;
+
+  // ── Full grade scale (no hardcoded partial grades) ────────────────────────
+  const calcGrade = (marks, maxMarks) => {
+    if (maxMarks === 0 || marks === '' || marks === undefined || marks === null) return '—';
+    const pct = (Number(marks) / Number(maxMarks)) * 100;
+    if (pct >= 90) return 'O';
+    if (pct >= 80) return 'A+';
+    if (pct >= 70) return 'A';
+    if (pct >= 60) return 'B+';
+    if (pct >= 50) return 'B';
+    if (pct >= 40) return 'C';
+    return 'F';
+  };
+
+  // ── Grade color helper ────────────────────────────────────────────────────
+  const gradeColor = (grade) => {
+    if (grade === 'O') return 'text-purple-600';
+    if (grade === 'A+') return 'text-emerald-600';
+    if (grade === 'A') return 'text-blue-600';
+    if (grade === 'B+') return 'text-teal-600';
+    if (grade === 'B') return 'text-amber-600';
+    if (grade === 'C') return 'text-orange-500';
+    if (grade === 'F') return 'text-rose-600';
+    return 'text-slate-400';
   };
 
   // Filter students strictly belonging to the assigned class cohort of the selected exam task
-  const rawAssignedStudents = users.filter(u => {
+  const rawAssignedStudents = currentExamObj ? users.filter(u => {
     if (u.role !== 'STUDENT' && !String(u.studentId || '').startsWith('STU')) return false;
 
     if (currentExamObj.classId && u.classId) {
@@ -74,14 +92,16 @@ export const TeacherMarks = () => {
     }
 
     return true;
-  });
+  }) : [];
 
-  const fallbackStudents = users.filter(u => {
+  const fallbackStudents = currentExamObj ? users.filter(u => {
     if (u.role !== 'STUDENT' && !String(u.studentId || '').startsWith('STU')) return false;
     return u.departmentCode === 'CSE' || String(u.department || '').toLowerCase().includes('computer');
-  }).slice(0, 10);
+  }).slice(0, 10) : [];
 
-  const assignedStudents = (rawAssignedStudents.length > 0 ? rawAssignedStudents : fallbackStudents).slice(0, 10);
+  const assignedStudents = currentExamObj
+    ? (rawAssignedStudents.length > 0 ? rawAssignedStudents : fallbackStudents).slice(0, 10)
+    : [];
 
   const [marksState, setMarksState] = useState({});
   const [remarksState, setRemarksState] = useState({});
@@ -91,7 +111,6 @@ export const TeacherMarks = () => {
     const updatedRemarks = { ...remarksState };
 
     validScoresList.forEach(item => {
-      // Find matching student object id
       const targetStu = assignedStudents.find(s =>
         (s.studentId && s.studentId.toLowerCase() === item.studentId.toLowerCase()) ||
         (s.username && s.username.toLowerCase() === item.studentId.toLowerCase()) ||
@@ -111,14 +130,18 @@ export const TeacherMarks = () => {
   };
 
   const handleMarkChange = (stuId, val) => {
-    const num = Math.min(currentExamObj.maxMarks, Math.max(0, Number(val)));
+    const max = currentExamObj?.maxMarks || 100;
+    const num = val === '' ? '' : Math.min(max, Math.max(0, Number(val)));
     setMarksState(prev => ({ ...prev, [stuId]: num }));
   };
 
   const handleSubmitMarks = (e) => {
     e.preventDefault();
+    if (!currentExamObj) return;
     const studentMarksList = assignedStudents.map(stu => {
-      const marksObtained = marksState[stu.id] !== undefined ? marksState[stu.id] : 85;
+      const marksObtained = marksState[stu.id] !== undefined && marksState[stu.id] !== ''
+        ? marksState[stu.id]
+        : 0;
       return {
         studentId: stu.studentId || stu.username || stu.id,
         studentName: stu.name,
@@ -126,7 +149,7 @@ export const TeacherMarks = () => {
         subjectName: currentExamObj.subjectName,
         marksObtained,
         maxMarks: currentExamObj.maxMarks,
-        remarks: remarksState[stu.id] || 'Satisfactory academic performance.'
+        remarks: remarksState[stu.id] || ''
       };
     });
 
@@ -164,102 +187,120 @@ export const TeacherMarks = () => {
           {/* Select Assigned Exam */}
           <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
             <label className="block font-bold text-slate-700 mb-1 text-xs uppercase">Select Scheduled Examination Task</label>
-            <select
-              value={selectedExamId}
-              onChange={e => setSelectedExamId(e.target.value)}
-              className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl font-bold text-navy text-xs"
-            >
-              {displayExams.map(ex => (
-                <option key={ex.id} value={ex.id}>
-                  {ex.id} &bull; {ex.name} ({ex.subjectCode} - {ex.subjectName}) &bull; Status: {ex.status}
-                </option>
-              ))}
-            </select>
+            {displayExams.length === 0 ? (
+              <p className="text-xs text-slate-400 py-2">No examination tasks assigned to you yet.</p>
+            ) : (
+              <select
+                value={selectedExamId}
+                onChange={e => setSelectedExamId(e.target.value)}
+                className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl font-bold text-navy text-xs"
+              >
+                {displayExams.map(ex => (
+                  <option key={ex.id} value={ex.id}>
+                    {ex.id} &bull; {ex.name} ({ex.subjectCode} - {ex.subjectName}) &bull; Status: {ex.status}
+                  </option>
+                ))}
+              </select>
+            )}
           </div>
 
           {/* Student Marks Entry Form */}
-          <form onSubmit={handleSubmitMarks} className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden space-y-4 p-6">
-            <div className="flex justify-between items-center border-b pb-3">
-              <div>
-                <h3 className="font-serif font-bold text-navy text-base">Marks Roster: {currentExamObj.subjectName}</h3>
-                <span className="text-xs text-slate-500">Max Score: {currentExamObj.maxMarks} Marks &bull; Course: {currentExamObj.course}</span>
-              </div>
-              <div className="flex flex-col sm:flex-row items-center space-y-2 sm:space-y-0 sm:space-x-2">
-                <button
-                  type="button"
-                  onClick={() => setIsImporterOpen(true)}
-                  className="w-full sm:w-auto bg-gold hover:bg-gold-hover text-navy-dark font-bold text-xs px-4 py-2.5 rounded-xl uppercase tracking-wider shadow flex items-center justify-center gap-1.5"
-                >
-                  <FileSpreadsheet className="w-4 h-4" /> Bulk CSV Score Import
-                </button>
-
-                <button
-                  type="submit"
-                  className="w-full sm:w-auto bg-navy hover:bg-navy-light text-gold font-bold text-xs px-5 py-2.5 rounded-xl uppercase tracking-wider shadow flex items-center justify-center gap-1.5"
-                >
-                  <Send className="w-4 h-4" /> Submit Marks to Admin
-                </button>
-              </div>
+          {!currentExamObj ? (
+            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-10 text-center text-slate-400 text-sm">
+              No examination selected. Please select an exam from the dropdown above.
             </div>
+          ) : (
+            <form onSubmit={handleSubmitMarks} className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden space-y-4 p-6">
+              <div className="flex justify-between items-center border-b pb-3">
+                <div>
+                  <h3 className="font-serif font-bold text-navy text-base">Marks Roster: {currentExamObj.subjectName}</h3>
+                  <span className="text-xs text-slate-500">
+                    Max Score: {currentExamObj.maxMarks} Marks &bull; Course: {currentExamObj.course || currentExamObj.department || '—'}
+                  </span>
+                </div>
+                <div className="flex flex-col sm:flex-row items-center space-y-2 sm:space-y-0 sm:space-x-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsImporterOpen(true)}
+                    className="w-full sm:w-auto bg-gold hover:bg-gold-hover text-navy-dark font-bold text-xs px-4 py-2.5 rounded-xl uppercase tracking-wider shadow flex items-center justify-center gap-1.5"
+                  >
+                    <FileSpreadsheet className="w-4 h-4" /> Bulk CSV Score Import
+                  </button>
 
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
-                <thead className="bg-navy text-amber-50 uppercase font-bold text-[10px]">
-                  <tr>
-                    <th className="p-3.5">Student ID</th>
-                    <th className="p-3.5">Student Name</th>
-                    <th className="p-3.5">Marks Obtained (Out of {currentExamObj.maxMarks})</th>
-                    <th className="p-3.5">Calculated Grade</th>
-                    <th className="p-3.5">Remarks</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 font-sans">
-                  {assignedStudents.map(stu => {
-                    const currentMarks = marksState[stu.id] !== undefined ? marksState[stu.id] : 85;
-                    const pct = (currentMarks / currentExamObj.maxMarks) * 100;
-                    const grade = pct >= 90 ? 'O' : pct >= 80 ? 'A+' : pct >= 70 ? 'A' : pct >= 60 ? 'B+' : 'B';
+                  <button
+                    type="submit"
+                    className="w-full sm:w-auto bg-navy hover:bg-navy-light text-gold font-bold text-xs px-5 py-2.5 rounded-xl uppercase tracking-wider shadow flex items-center justify-center gap-1.5"
+                  >
+                    <Send className="w-4 h-4" /> Submit Marks to Admin
+                  </button>
+                </div>
+              </div>
 
-                    return (
-                      <tr key={stu.id} className="hover:bg-slate-50">
-                        <td className="p-3.5 font-bold text-navy">{stu.studentId || stu.username}</td>
-                        <td className="p-3.5 font-bold text-slate-800">{stu.name}</td>
-                        <td className="p-3.5">
-                          <input
-                            type="number"
-                            min="0"
-                            max={currentExamObj.maxMarks}
-                            value={currentMarks}
-                            onChange={e => handleMarkChange(stu.id, e.target.value)}
-                            className="w-24 p-2 bg-slate-50 border rounded-lg font-bold text-navy text-xs"
-                          />
-                        </td>
-                        <td className="p-3.5 font-bold text-emerald-600 text-sm">{grade}</td>
-                        <td className="p-3.5">
-                          <input
-                            type="text"
-                            placeholder="Faculty remarks..."
-                            value={remarksState[stu.id] || ''}
-                            onChange={e => setRemarksState({ ...remarksState, [stu.id]: e.target.value })}
-                            className="w-full p-2 bg-slate-50 border rounded-lg text-xs"
-                          />
-                        </td>
+              {assignedStudents.length === 0 ? (
+                <p className="text-xs text-slate-400 text-center py-6">No students found for this examination cohort.</p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-navy text-amber-50 uppercase font-bold text-[10px]">
+                      <tr>
+                        <th className="p-3.5">Student ID</th>
+                        <th className="p-3.5">Student Name</th>
+                        <th className="p-3.5">Marks Obtained (Out of {currentExamObj.maxMarks})</th>
+                        <th className="p-3.5">Calculated Grade</th>
+                        <th className="p-3.5">Remarks</th>
                       </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </form>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 font-sans">
+                      {assignedStudents.map(stu => {
+                        const currentMarks = marksState[stu.id] !== undefined ? marksState[stu.id] : '';
+                        const grade = calcGrade(currentMarks, currentExamObj.maxMarks);
+
+                        return (
+                          <tr key={stu.id} className="hover:bg-slate-50">
+                            <td className="p-3.5 font-bold text-navy">{stu.studentId || stu.username}</td>
+                            <td className="p-3.5 font-bold text-slate-800">{stu.name}</td>
+                            <td className="p-3.5">
+                              <input
+                                type="number"
+                                min="0"
+                                max={currentExamObj.maxMarks}
+                                value={currentMarks}
+                                placeholder="Enter marks"
+                                onChange={e => handleMarkChange(stu.id, e.target.value)}
+                                className="w-28 p-2 bg-slate-50 border rounded-lg font-bold text-navy text-xs"
+                              />
+                            </td>
+                            <td className={`p-3.5 font-bold text-sm ${gradeColor(grade)}`}>{grade}</td>
+                            <td className="p-3.5">
+                              <input
+                                type="text"
+                                placeholder="Faculty remarks..."
+                                value={remarksState[stu.id] || ''}
+                                onChange={e => setRemarksState({ ...remarksState, [stu.id]: e.target.value })}
+                                className="w-full p-2 bg-slate-50 border rounded-lg text-xs"
+                              />
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </form>
+          )}
 
           {/* BULK CSV IMPORTER MODAL */}
-          <BulkScoreImporter
-            isOpen={isImporterOpen}
-            onClose={() => setIsImporterOpen(false)}
-            assignedStudents={assignedStudents}
-            maxMarks={currentExamObj.maxMarks}
-            examName={currentExamObj.name}
-            onApplyScores={handleApplyCSVData}
-          />
+          {currentExamObj && (
+            <BulkScoreImporter
+              isOpen={isImporterOpen}
+              onClose={() => setIsImporterOpen(false)}
+              assignedStudents={assignedStudents}
+              maxMarks={currentExamObj.maxMarks}
+              examName={currentExamObj.name}
+              onApplyScores={handleApplyCSVData}
+            />
+          )}
 
         </main>
       </div>
