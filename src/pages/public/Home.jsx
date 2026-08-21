@@ -394,9 +394,34 @@ export const Home = () => {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            {courses.slice(0, 3).map((course) => (
-              <ProgramCard key={course.id} course={course} />
-            ))}
+            {(() => {
+              const validDegrees = Array.from(
+                new Map(
+                  [...INITIAL_COURSES, ...(courses || [])]
+                    .filter(Boolean)
+                    .map(c => [c?.id || c?.code || c?.name || Math.random().toString(), c])
+                ).values()
+              ).filter(c => {
+                if (!c) return false;
+                const name = (c.name || '').trim();
+                const code = (c.code || '').trim();
+                const id = (c.id || '').trim();
+                const level = (c.level || c.type || '').trim();
+
+                if (name.toLowerCase().includes('c programming') && !name.toLowerCase().includes('b.tech')) return false;
+
+                return id.startsWith('deg-') || 
+                       level.includes('Undergraduate') || 
+                       level.includes('Postgraduate') || 
+                       level.includes('Degree') || 
+                       /\b(b\.?tech|mba|m\.?tech|bachelor|master|degree)\b/i.test(name) ||
+                       /\b(b\.?tech|mba|m\.?tech)\b/i.test(code);
+              });
+
+              return validDegrees.slice(0, 3).map((course) => (
+                <ProgramCard key={course.id} course={course} />
+              ));
+            })()}
           </div>
         </div>
       </section>
