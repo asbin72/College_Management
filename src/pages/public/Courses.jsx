@@ -16,9 +16,12 @@ export const Courses = () => {
   // Display only valid accredited UG & PG degree programs, excluding individual subjects like "C Programming"
   const displayCourses = Array.from(
     new Map(
-      [...INITIAL_COURSES, ...(courses || [])].map(c => [c.id || c.code || c.name, c])
+      [...INITIAL_COURSES, ...(courses || [])]
+        .filter(Boolean)
+        .map(c => [c?.id || c?.code || c?.name || Math.random().toString(), c])
     ).values()
   ).filter(c => {
+    if (!c) return false;
     const name = (c.name || '').trim();
     const code = (c.code || '').trim();
     const id = (c.id || '').trim();

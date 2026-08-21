@@ -3,17 +3,23 @@ import { useParams, Link } from 'react-router-dom';
 import { Breadcrumbs } from '../../components/common/Breadcrumbs';
 import { useData } from '../../context/DataContext';
 import { CheckCircle2, BookOpen, ArrowRight, Star, Briefcase, GraduationCap, ShieldCheck, Download } from 'lucide-react';
+import { INITIAL_COURSES } from '../../data/initialMockData';
 
 export const CourseDetail = () => {
   const { courseId, course: courseParam } = useParams();
   const { courses, subjects } = useData();
   const [selectedSem, setSelectedSem] = useState('Semester 1');
 
+  const allCourses = Array.from(
+    new Map(
+      [...INITIAL_COURSES, ...(courses || [])].filter(Boolean).map(c => [c?.id || c?.code || c?.name || Math.random().toString(), c])
+    ).values()
+  );
+
   const idToMatch = courseId || courseParam;
-  const course = (courses || []).find(c =>
-    c.id === idToMatch ||
-    c.code?.toLowerCase() === idToMatch?.toLowerCase()
-  ) || (courses && courses[0]) || {
+  const course = allCourses.find(c =>
+    c && (c.id === idToMatch || c.code?.toLowerCase() === idToMatch?.toLowerCase())
+  ) || allCourses[0] || {
     id: "c1",
     name: "B.Tech Computer Science & Engineering",
     code: "CS-101",
