@@ -2,15 +2,14 @@ import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { HeroSlider } from '../../components/public/HeroSlider';
 import { TestimonialSlider } from '../../components/public/TestimonialSlider';
-import { ProgramCard } from '../../components/public/ProgramCard';
+import { DepartmentCard } from '../../components/public/DepartmentCard';
 import { Lightbox } from '../../components/common/Lightbox';
 import { AnimatedCounter } from '../../components/common/AnimatedCounter';
 import { useData } from '../../context/DataContext';
-import { INITIAL_COURSES } from '../../data/initialMockData';
 import { BookOpen, Users, Building, Code, ShieldCheck, Briefcase, ArrowRight, Calendar, MapPin, Mail, CheckCircle2, ChevronRight, Eye, Terminal, Laptop } from 'lucide-react';
 
 export const Home = () => {
-  const { courses, news, events } = useData();
+  const { departments = [], news, events } = useData();
   const [selectedImage, setSelectedImage] = useState(null);
   const [newsletterEmail, setNewsletterEmail] = useState('');
   const [subscribed, setSubscribed] = useState(false);
@@ -376,53 +375,28 @@ export const Home = () => {
         </div>
       </section>
 
-      {/* 6. ACADEMIC PROGRAMS */}
+      {/* 6. FEATURED ACADEMIC DEPARTMENTS */}
       <section className="py-20 bg-white">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex flex-col md:flex-row md:items-end justify-between mb-12">
             <div>
               <span className="text-gold text-xs font-bold uppercase tracking-widest bg-gold/10 px-3.5 py-1.5 rounded-full">
-                FUTURE-READY DEGREES
+                ACADEMIC EXCELLENCE
               </span>
               <h2 className="text-3xl sm:text-4xl font-serif font-bold text-navy mt-3">
-                EXPLORE OUR PROGRAMS
+                EXPLORE OUR DEPARTMENTS
               </h2>
             </div>
-            <Link to="/academics/courses" className="mt-4 md:mt-0 text-xs font-bold text-gold hover:text-navy uppercase tracking-widest flex items-center">
-              <span>VIEW ALL COURSES</span>
+            <Link to="/academics/departments" className="mt-4 md:mt-0 text-xs font-bold text-gold hover:text-navy uppercase tracking-widest flex items-center">
+              <span>VIEW ALL DEPARTMENTS</span>
               <ArrowRight className="w-4 h-4 ml-1" />
             </Link>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            {(() => {
-              const validDegrees = Array.from(
-                new Map(
-                  [...INITIAL_COURSES, ...(courses || [])]
-                    .filter(Boolean)
-                    .map(c => [c?.id || c?.code || c?.name || Math.random().toString(), c])
-                ).values()
-              ).filter(c => {
-                if (!c) return false;
-                const name = (c.name || '').trim();
-                const code = (c.code || '').trim();
-                const id = (c.id || '').trim();
-                const level = (c.level || c.type || '').trim();
-
-                if (name.toLowerCase().includes('c programming') && !name.toLowerCase().includes('b.tech')) return false;
-
-                return id.startsWith('deg-') || 
-                       level.includes('Undergraduate') || 
-                       level.includes('Postgraduate') || 
-                       level.includes('Degree') || 
-                       /\b(b\.?tech|mba|m\.?tech|bachelor|master|degree)\b/i.test(name) ||
-                       /\b(b\.?tech|mba|m\.?tech)\b/i.test(code);
-              });
-
-              return validDegrees.slice(0, 3).map((course) => (
-                <ProgramCard key={course.id} course={course} />
-              ));
-            })()}
+            {departments.slice(0, 3).map((department) => (
+              <DepartmentCard key={department.id || department.code} department={department} />
+            ))}
           </div>
         </div>
       </section>

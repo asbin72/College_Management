@@ -1,52 +1,33 @@
 import React, { useState } from 'react';
 import { Breadcrumbs } from '../../components/common/Breadcrumbs';
-import { ProgramCard } from '../../components/public/ProgramCard';
+import { DepartmentCard } from '../../components/public/DepartmentCard';
 import { useData } from '../../context/DataContext';
 import { Search, Award, Sparkles, ArrowRight, ShieldCheck } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
-import { INITIAL_COURSES } from '../../data/initialMockData';
-
 export const Courses = () => {
-  const { courses } = useData();
+  const { departments = [] } = useData();
   const [search, setSearch] = useState('');
-  const [deptFilter, setDeptFilter] = useState('ALL');
-  const [levelFilter, setLevelFilter] = useState('ALL');
+  const [categoryFilter, setCategoryFilter] = useState('ALL');
 
-  // Display only valid accredited UG & PG degree programs, excluding individual subjects like "C Programming"
-  const displayCourses = Array.from(
-    new Map(
-      [...INITIAL_COURSES, ...(courses || [])]
-        .filter(Boolean)
-        .map(c => [c?.id || c?.code || c?.name || Math.random().toString(), c])
-    ).values()
-  ).filter(c => {
-    if (!c) return false;
-    const name = (c.name || '').trim();
-    const code = (c.code || '').trim();
-    const id = (c.id || '').trim();
-    const level = (c.level || c.type || '').trim();
+  const filteredDepartments = (departments || []).filter(dept => {
+    const term = search.trim().toLowerCase();
+    const matchesSearch = !term ||
+      (dept.name || '').toLowerCase().includes(term) ||
+      (dept.code || '').toLowerCase().includes(term) ||
+      (dept.hod || '').toLowerCase().includes(term) ||
+      (dept.description || '').toLowerCase().includes(term);
 
-    if (name.toLowerCase().includes('c programming') && !name.toLowerCase().includes('b.tech')) return false;
-    
-    // Must be a recognized degree program (B.Tech, MBA, M.Tech, etc.)
-    return id.startsWith('deg-') || 
-           level.includes('Undergraduate') || 
-           level.includes('Postgraduate') || 
-           level.includes('Degree') || 
-           /\b(b\.?tech|mba|m\.?tech|bachelor|master|degree)\b/i.test(name) ||
-           /\b(b\.?tech|mba|m\.?tech)\b/i.test(code);
-  });
+    const deptCode = (dept.code || '').toUpperCase();
+    const deptName = (dept.name || '').toLowerCase();
+    const isManagement = deptCode === 'MBA' || deptName.includes('management') || deptName.includes('business');
+    const isEngineering = !isManagement;
 
-  const filteredCourses = (displayCourses || []).filter(course => {
-    const subjectsStr = Array.isArray(course.subjects) ? course.subjects.join(' ') : '';
-    const matchesSearch = (course.name || '').toLowerCase().includes(search.toLowerCase()) || 
-                          (course.code || '').toLowerCase().includes(search.toLowerCase()) ||
-                          subjectsStr.toLowerCase().includes(search.toLowerCase());
-    const matchesDept = deptFilter === 'ALL' || (course.department || '').toLowerCase().includes(deptFilter.toLowerCase());
-    const courseLevel = (course.level || course.type || '').toLowerCase();
-    const matchesLevel = levelFilter === 'ALL' || courseLevel.includes(levelFilter.toLowerCase());
-    return matchesSearch && matchesDept && matchesLevel;
+    const matchesCategory = categoryFilter === 'ALL' ||
+      (categoryFilter === 'ENGINEERING' && isEngineering) ||
+      (categoryFilter === 'MANAGEMENT' && isManagement);
+
+    return matchesSearch && matchesCategory;
   });
 
   // Industry Upskilling Certifications
@@ -179,28 +160,28 @@ export const Courses = () => {
       <div className="bg-white text-slate-800 py-16 border-b border-slate-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
           <span className="text-gold text-xs font-bold uppercase tracking-[0.25em] bg-gold/10 px-3.5 py-1.5 rounded-full">
-            DEGREE PROGRAMS & CAREER PATHWAYS
+            ACADEMIC DEPARTMENTS & CAREER PATHWAYS
           </span>
           <h1 className="text-4xl sm:text-5xl font-serif font-bold text-navy mt-4">
-            Degree Courses
+            Academic Departments
           </h1>
           <p className="text-slate-600 text-sm sm:text-base max-w-2xl mx-auto mt-3 font-sans leading-relaxed">
-            Explore our accredited undergraduate & postgraduate engineering degrees, integrated professional certification courses, and intensive placement-readiness training.
+            Explore our accredited academic departments, integrated professional certification courses, and intensive placement-readiness training.
           </p>
         </div>
       </div>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 space-y-20 font-sans">
         
-        {/* SECTION 1: DEGREE COURSES CATALOG */}
+        {/* SECTION 1: ACADEMIC DEPARTMENTS CATALOG */}
         <div>
           <div className="flex flex-col md:flex-row md:items-end justify-between mb-8">
             <div>
-              <span className="text-gold text-xs font-bold uppercase tracking-widest">CURRICULUM DEGREES</span>
-              <h2 className="text-3xl font-serif font-bold text-navy mt-1">Undergraduate & Postgraduate Degrees</h2>
+              <span className="text-gold text-xs font-bold uppercase tracking-widest">ACADEMIC DEPARTMENTS</span>
+              <h2 className="text-3xl font-serif font-bold text-navy mt-1">Explore Our Academic Departments</h2>
             </div>
             <span className="text-xs text-slate-500 font-medium mt-2 md:mt-0">
-              Showing {filteredCourses.length} accredited degree programs
+              Showing {filteredDepartments.length} academic departments
             </span>
           </div>
 
@@ -209,60 +190,43 @@ export const Courses = () => {
             <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
               
               {/* Search Input */}
-              <div className="md:col-span-6 relative">
+              <div className="md:col-span-8 relative">
                 <Search className="w-5 h-5 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
                 <input
                   type="text"
-                  placeholder="Search courses by name or code (e.g. B.Tech, CSE, MBA)..."
+                  placeholder="Search departments by name or code (e.g. CSE, Mechanical)..."
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   className="w-full pl-11 pr-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold text-navy focus:outline-none focus:border-navy"
                 />
               </div>
 
-              {/* Department Filter */}
-              <div className="md:col-span-3">
+              {/* Category Filter */}
+              <div className="md:col-span-4">
                 <select
-                  value={deptFilter}
-                  onChange={(e) => setDeptFilter(e.target.value)}
+                  value={categoryFilter}
+                  onChange={(e) => setCategoryFilter(e.target.value)}
                   className="w-full px-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold text-navy focus:outline-none focus:border-navy"
                 >
-                  <option value="ALL">All Departments</option>
-                  <option value="Computer Science">Computer Science & Eng</option>
-                  <option value="Information">Information Science & Eng</option>
-                  <option value="Electronics">Electronics & Communication</option>
-                  <option value="Mechanical">Mechanical Engineering</option>
-                  <option value="Civil">Civil Engineering</option>
-                  <option value="Management">Management Studies (MBA)</option>
-                </select>
-              </div>
-
-              {/* Level Filter */}
-              <div className="md:col-span-3">
-                <select
-                  value={levelFilter}
-                  onChange={(e) => setLevelFilter(e.target.value)}
-                  className="w-full px-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold text-navy focus:outline-none focus:border-navy"
-                >
-                  <option value="ALL">All Degree Levels</option>
-                  <option value="Undergraduate">Undergraduate (B.Tech)</option>
-                  <option value="Postgraduate">Postgraduate (MBA/M.Tech)</option>
+                  <option value="ALL">All Categories</option>
+                  <option value="ENGINEERING">Engineering & Technology</option>
+                  <option value="MANAGEMENT">Management Studies</option>
                 </select>
               </div>
 
             </div>
           </div>
 
-          {/* Courses Cards Grid */}
-          {filteredCourses.length > 0 ? (
+          {/* Departments Cards Grid */}
+          {filteredDepartments.length > 0 ? (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-              {filteredCourses.map((course) => (
-                <ProgramCard key={course.id} course={course} />
+              {filteredDepartments.map((department) => (
+                <DepartmentCard key={department.id || department.code} department={department} />
               ))}
             </div>
           ) : (
             <div className="text-center py-16 bg-white rounded-2xl border border-slate-200">
-              <p className="text-slate-500 text-sm">No courses matching your search criteria were found.</p>
+              <p className="text-slate-500 text-sm">No departments matching your search criteria were found.</p>
             </div>
           )}
         </div>
