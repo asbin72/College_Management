@@ -1,5 +1,5 @@
 import React from 'react';
-import { AlertTriangle, Trash2, Home } from 'lucide-react';
+import { AlertTriangle, RefreshCw } from 'lucide-react';
 
 export class ErrorBoundary extends React.Component {
   constructor(props) {
@@ -12,57 +12,52 @@ export class ErrorBoundary extends React.Component {
   }
 
   componentDidCatch(error, errorInfo) {
-    console.error("ErrorBoundary caught an error:", error, errorInfo);
+    console.error('[React Error Boundary Caught Error]:', error, errorInfo);
     this.setState({ errorInfo });
   }
 
-  handleClearCacheAndReload = () => {
-    try {
-      localStorage.clear();
-      sessionStorage.clear();
-    } catch (e) {}
-    window.location.href = '/';
+  handleReload = () => {
+    window.location.reload();
+  };
+
+  handleReset = () => {
+    this.setState({ hasError: false, error: null, errorInfo: null });
   };
 
   render() {
     if (this.state.hasError) {
       return (
-        <div className="min-h-screen bg-slate-900 text-white flex items-center justify-center p-6 font-sans">
-          <div className="max-w-md w-full bg-slate-800 border border-slate-700 rounded-3xl p-8 shadow-2xl text-center space-y-6">
-            <div className="w-16 h-16 bg-amber-500/20 text-amber-400 rounded-full flex items-center justify-center mx-auto border border-amber-500/30">
-              <AlertTriangle className="w-8 h-8" />
+        <div className="min-h-screen bg-slate-900 color-white flex items-center justify-center p-6 text-slate-100 font-sans">
+          <div className="bg-slate-800 border border-slate-700 rounded-2xl max-w-lg w-full p-8 shadow-2xl text-center space-y-6">
+            <div className="w-16 h-16 bg-red-500/10 border border-red-500/20 rounded-2xl flex items-center justify-center mx-auto text-red-400">
+              <AlertTriangle size={32} />
             </div>
 
             <div>
-              <h2 className="text-xl font-bold font-serif text-white">Something went wrong</h2>
-              <p className="text-xs text-slate-400 mt-2 font-serif">
-                A client cache or rendering error was detected. Clearing outdated local data will restore your portal immediately.
+              <h2 className="text-2xl font-bold text-slate-100 mb-2">Something went wrong</h2>
+              <p className="text-sm text-slate-400">
+                An unexpected component error occurred in the application interface.
               </p>
             </div>
 
             {this.state.error && (
-              <div className="p-3 bg-slate-950/60 rounded-xl text-left border border-slate-700/50">
-                <p className="text-[11px] font-mono text-red-400 break-words">
-                  {this.state.error.toString()}
-                </p>
+              <div className="bg-slate-950/80 border border-slate-800 rounded-xl p-4 text-left font-mono text-xs text-red-400 max-h-40 overflow-y-auto">
+                <p className="font-semibold mb-1">{this.state.error.toString()}</p>
               </div>
             )}
 
-            <div className="space-y-2 pt-2">
+            <div className="flex flex-col sm:flex-row gap-3 justify-center pt-2">
               <button
-                onClick={this.handleClearCacheAndReload}
-                className="w-full py-3 px-4 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs uppercase tracking-wider rounded-xl transition-all flex items-center justify-center space-x-2 shadow-lg shadow-amber-500/20"
+                onClick={this.handleReset}
+                className="px-5 py-2.5 bg-slate-700 hover:bg-slate-600 text-slate-100 rounded-xl font-medium transition text-sm flex items-center justify-center gap-2"
               >
-                <Trash2 className="w-4 h-4" />
-                <span>Reset Local Data & Reload</span>
+                Try Again
               </button>
-
               <button
-                onClick={() => { window.location.href = '/login'; }}
-                className="w-full py-2.5 px-4 bg-slate-700 hover:bg-slate-600 text-white font-bold text-xs rounded-xl transition-all flex items-center justify-center space-x-2"
+                onClick={this.handleReload}
+                className="px-5 py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-xl font-semibold transition text-sm flex items-center justify-center gap-2"
               >
-                <Home className="w-4 h-4 text-amber-400" />
-                <span>Go To Login Page</span>
+                <RefreshCw size={16} /> Reload Application
               </button>
             </div>
           </div>
@@ -73,3 +68,5 @@ export class ErrorBoundary extends React.Component {
     return this.props.children;
   }
 }
+
+export default ErrorBoundary;

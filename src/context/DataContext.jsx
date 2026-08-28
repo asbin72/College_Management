@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useMemo } from 'react';
 import { getCurrentYear, getAcademicYear, generateRegisterNumber, generateTransactionId, generateAppRef } from '../utils/idGenerator';
-import { getAuthHeaders } from '../utils/apiClient';
+import { getAuthHeaders, getApiBaseUrl } from '../utils/apiClient';
 import {
   INITIAL_USERS,
   INITIAL_DEPARTMENTS,
@@ -26,17 +26,7 @@ import {
 
 const DataContext = createContext();
 
-const getApiBase = () => {
-  if (import.meta.env.VITE_API_BASE) {
-    return import.meta.env.VITE_API_BASE;
-  }
-  if (typeof window !== 'undefined' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
-    return 'https://collegemanagement-production.up.railway.app/api';
-  }
-  return 'http://localhost:5000/api';
-};
-
-const API_BASE = getApiBase();
+const API_BASE = getApiBaseUrl();
 
 export const DataProvider = ({ children }) => {
   const [dbConnected, setDbConnected] = useState(false);
@@ -273,24 +263,25 @@ export const DataProvider = ({ children }) => {
   useEffect(() => {
     async function syncFromBackend() {
       try {
+        const headers = getAuthHeaders();
         const [stdRes, tchRes, subRes, dptRes, crsRes, hlpRes, annRes, levRes, fcaRes, exmRes, mrkRes, attRes, tAttRes, notifRes, adtRes, asnRes, feeRes] = await Promise.allSettled([
-          fetch(`${API_BASE}/students`).then(r => r.ok ? r.json() : Promise.reject(r.status)),
-          fetch(`${API_BASE}/teachers`).then(r => r.ok ? r.json() : Promise.reject(r.status)),
-          fetch(`${API_BASE}/subjects`).then(r => r.ok ? r.json() : Promise.reject(r.status)),
-          fetch(`${API_BASE}/departments`).then(r => r.ok ? r.json() : Promise.reject(r.status)),
-          fetch(`${API_BASE}/courses`).then(r => r.ok ? r.json() : Promise.reject(r.status)),
-          fetch(`${API_BASE}/helpdesk`).then(r => r.ok ? r.json() : Promise.reject(r.status)),
-          fetch(`${API_BASE}/announcements`).then(r => r.ok ? r.json() : Promise.reject(r.status)),
-          fetch(`${API_BASE}/leave-requests`).then(r => r.ok ? r.json() : Promise.reject(r.status)),
-          fetch(`${API_BASE}/faculty-assignments`).then(r => r.ok ? r.json() : Promise.reject(r.status)),
-          fetch(`${API_BASE}/examinations`).then(r => r.ok ? r.json() : Promise.reject(r.status)),
-          fetch(`${API_BASE}/marks`).then(r => r.ok ? r.json() : Promise.reject(r.status)),
-          fetch(`${API_BASE}/attendance`).then(r => r.ok ? r.json() : Promise.reject(r.status)),
-          fetch(`${API_BASE}/teacher-attendance`).then(r => r.ok ? r.json() : Promise.reject(r.status)),
-          fetch(`${API_BASE}/notifications`).then(r => r.ok ? r.json() : Promise.reject(r.status)),
-          fetch(`${API_BASE}/audit-logs`).then(r => r.ok ? r.json() : Promise.reject(r.status)),
-          fetch(`${API_BASE}/assignments`).then(r => r.ok ? r.json() : Promise.reject(r.status)),
-          fetch(`${API_BASE}/fees`).then(r => r.ok ? r.json() : Promise.reject(r.status))
+          fetch(`${API_BASE}/students`, { headers }).then(r => r.ok ? r.json() : Promise.reject(r.status)),
+          fetch(`${API_BASE}/teachers`, { headers }).then(r => r.ok ? r.json() : Promise.reject(r.status)),
+          fetch(`${API_BASE}/subjects`, { headers }).then(r => r.ok ? r.json() : Promise.reject(r.status)),
+          fetch(`${API_BASE}/departments`, { headers }).then(r => r.ok ? r.json() : Promise.reject(r.status)),
+          fetch(`${API_BASE}/courses`, { headers }).then(r => r.ok ? r.json() : Promise.reject(r.status)),
+          fetch(`${API_BASE}/helpdesk`, { headers }).then(r => r.ok ? r.json() : Promise.reject(r.status)),
+          fetch(`${API_BASE}/announcements`, { headers }).then(r => r.ok ? r.json() : Promise.reject(r.status)),
+          fetch(`${API_BASE}/leave-requests`, { headers }).then(r => r.ok ? r.json() : Promise.reject(r.status)),
+          fetch(`${API_BASE}/faculty-assignments`, { headers }).then(r => r.ok ? r.json() : Promise.reject(r.status)),
+          fetch(`${API_BASE}/examinations`, { headers }).then(r => r.ok ? r.json() : Promise.reject(r.status)),
+          fetch(`${API_BASE}/marks`, { headers }).then(r => r.ok ? r.json() : Promise.reject(r.status)),
+          fetch(`${API_BASE}/attendance`, { headers }).then(r => r.ok ? r.json() : Promise.reject(r.status)),
+          fetch(`${API_BASE}/teacher-attendance`, { headers }).then(r => r.ok ? r.json() : Promise.reject(r.status)),
+          fetch(`${API_BASE}/notifications`, { headers }).then(r => r.ok ? r.json() : Promise.reject(r.status)),
+          fetch(`${API_BASE}/audit-logs`, { headers }).then(r => r.ok ? r.json() : Promise.reject(r.status)),
+          fetch(`${API_BASE}/assignments`, { headers }).then(r => r.ok ? r.json() : Promise.reject(r.status)),
+          fetch(`${API_BASE}/fees`, { headers }).then(r => r.ok ? r.json() : Promise.reject(r.status))
         ]);
 
         const anyBackendSuccess = [stdRes, tchRes, subRes, dptRes, crsRes, hlpRes, annRes, levRes, fcaRes, exmRes, mrkRes, attRes, tAttRes, notifRes, adtRes, asnRes, feeRes].some(r => r.status === 'fulfilled');

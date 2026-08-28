@@ -8,6 +8,8 @@ import {
   ArrowLeft, Plus, Edit, Trash2, Calendar, Clock, MapPin, UserCheck, BookOpen, X, CheckCircle 
 } from 'lucide-react';
 
+import { getApiBaseUrl, getAuthHeaders } from '../../utils/apiClient';
+
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const PERIODS = ['P1', 'P2', 'P3', 'P4', 'P5', 'P6', 'P7', 'P8'];
 
@@ -33,14 +35,7 @@ export const AdminCourseSubjects = () => {
 
   const teachers = users.filter(u => u.role === 'TEACHER' || u.role === 'STAFF');
 
-  const getApiBase = () => {
-    if (import.meta.env.VITE_API_BASE) return import.meta.env.VITE_API_BASE;
-    if (typeof window !== 'undefined' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
-      return 'https://collegemanagement-production.up.railway.app/api';
-    }
-    return 'http://localhost:5000/api';
-  };
-  const API_BASE = getApiBase();
+  const API_BASE = getApiBaseUrl();
 
   const loadData = async () => {
     setLoading(true);

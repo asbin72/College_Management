@@ -3,6 +3,24 @@
 export const AUTH_TOKEN_KEY = 'kalpanaaa_auth_token';
 
 /**
+ * Dynamically resolves the API Base URL.
+ * Prefers VITE_API_BASE, otherwise falls back to current location's /api origin.
+ */
+export const getApiBaseUrl = () => {
+  if (import.meta.env.VITE_API_BASE) {
+    return import.meta.env.VITE_API_BASE.replace(/\/+$/, '');
+  }
+  if (typeof window !== 'undefined' && window.location) {
+    const { protocol, hostname } = window.location;
+    if (hostname === 'localhost' || hostname === '127.0.0.1') {
+      return `${protocol}//${hostname}:3000/api`;
+    }
+    return `${window.location.origin}/api`;
+  }
+  return 'http://localhost:3000/api';
+};
+
+/**
  * Retrieves the stored JWT authentication token from localStorage.
  */
 export const getAuthToken = () => {

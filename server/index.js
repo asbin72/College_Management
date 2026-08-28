@@ -5,6 +5,8 @@ import mysql from 'mysql2/promise';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 import { initializeDatabase } from './init_db.js';
+import { globalErrorHandler, asyncHandler, AppError } from './middleware/errorHandler.js';
+import { authRateLimiter, publicApiRateLimiter } from './middleware/rateLimiter.js';
 
 const app = express();
 const PORT = process.env.PORT || process.env.RAILWAY_PORT || 3000;
@@ -22,6 +24,30 @@ app.use(cors({
 }));
 app.options('*', cors());
 app.use(express.json({ limit: '10mb' }));
+
+// Health Check Endpoint for zero-downtime deploy monitoring
+app.get(['/health', '/api/health'], async (req, res) => {
+  try {
+    const connection = await dbPool.getConnection();
+    await connection.query('SELECT 1');
+    connection.release();
+    res.json({
+      status: 'ok',
+      service: 'Kalpanaaa Education Enterprise API',
+      timestamp: new Date().toISOString(),
+      uptime: process.uptime(),
+      database: 'connected'
+    });
+  } catch (err) {
+    res.status(500).json({
+      status: 'error',
+      service: 'Kalpanaaa Education Enterprise API',
+      timestamp: new Date().toISOString(),
+      database: 'disconnected',
+      error: err.message
+    });
+  }
+});
 
 // MySQL Connection Pool — supports MYSQL_URL, Railway env vars, and localhost fallback
 const getDbConfig = () => {
@@ -245,6 +271,8 @@ function requireRole(allowedRoles = []) {
 }
 
 const PUBLIC_API_ALLOWLIST = [
+  { method: 'GET', path: '/api/health' },
+  { method: 'GET', path: '/health' },
   { method: 'POST', path: '/api/auth/login' },
   { method: 'POST', path: '/api/auth/student-signup' },
   { method: 'POST', path: '/api/admissions/apply' },
@@ -336,7 +364,7 @@ async function verifyAndMigratePassword(inputPassword, storedPassword, tableName
   return isValid;
 }
 
-app.post('/api/auth/login', async (req, res) => {
+app.post('/api/auth/login', authRateLimiter, async (req, res) => {
   const { identifier, password } = req.body;
   if (!identifier || !password) {
     return res.status(400).json({ success: false, message: 'Identifier and password are required.' });
@@ -431,7 +459,7 @@ app.post('/api/auth/login', async (req, res) => {
   }
 });
 
-app.post('/api/auth/student-signup', async (req, res) => {
+app.post('/api/auth/student-signup', authRateLimiter, async (req, res) => {
   const { name, email, password, phone, course } = req.body;
   if (!email || !name || !password) {
     return res.status(400).json({ success: false, message: 'Name, email, and password are required.' });
@@ -2222,11 +2250,54 @@ app.post('/api/admin/clean-demo-data', authenticateToken, requireRole(['ADMIN'])
   }
 });
 
-// Start Express Server
+// 404 Route Handler for undefined API routes
+app.use('/api/*', (req, res, next) => {
+  res.status(404).json({
+    success: false,
+    message: `API endpoint '${req.originalUrl || req.url}' not found on server.`,
+    errorCode: 'NOT_FOUND'
+  });
+});
+
+// Centralized Global Express Error Handler Middleware
+app.use(globalErrorHandler);
+
+// Process-level Crash Resistance & Graceful Shutdown
+let server = null;
 if (!process.env.VERCEL) {
-  app.listen(PORT, '0.0.0.0', () => {
+  server = app.listen(PORT, '0.0.0.0', () => {
     console.log(`🌐 Kalpanaaa Enterprise API Server running on port ${PORT}`);
   });
 }
+
+const gracefulShutdown = async (signal) => {
+  console.log(`\n⚠️ Received ${signal}. Initiating graceful shutdown...`);
+  if (server) {
+    server.close(async () => {
+      console.log('HTTP server closed.');
+      try {
+        await dbPool.end();
+        console.log('MySQL Connection pool closed cleanly.');
+        process.exit(0);
+      } catch (err) {
+        console.error('Error closing MySQL pool:', err);
+        process.exit(1);
+      }
+    });
+  } else {
+    process.exit(0);
+  }
+};
+
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+
+process.on('uncaughtException', (err) => {
+  console.error('CRITICAL: Uncaught Exception detected:', err);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('CRITICAL: Unhandled Rejection at:', promise, 'reason:', reason);
+});
 
 export default app;

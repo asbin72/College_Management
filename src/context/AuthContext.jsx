@@ -1,21 +1,11 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { INITIAL_USERS } from '../data/initialMockData';
 import { getCurrentYear, getAcademicYear, generateRegisterNumber } from '../utils/idGenerator';
-import { setAuthToken } from '../utils/apiClient';
+import { setAuthToken, getApiBaseUrl } from '../utils/apiClient';
 
 const AuthContext = createContext();
 
-const getApiBase = () => {
-  if (import.meta.env.VITE_API_BASE) {
-    return import.meta.env.VITE_API_BASE;
-  }
-  if (typeof window !== 'undefined' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
-    return 'https://collegemanagement-production.up.railway.app/api';
-  }
-  return 'http://localhost:5000/api';
-};
-
-const API_BASE = getApiBase();
+const API_BASE = getApiBaseUrl();
 
 export const AuthProvider = ({ children, users = [] }) => {
   const [currentUser, setCurrentUser] = useState(() => {
@@ -51,7 +41,33 @@ export const AuthProvider = ({ children, users = [] }) => {
 
     const normalizedId = cleanId.toLowerCase();
 
-    // 1. Instant Local User Match (0ms latency for Admin & active users)
+    // 1. Primary Authentication: MySQL Express REST API Server Login
+    try {
+      const response = await fetch(`${API_BASE}/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ identifier: cleanId, password })
+      });
+
+      const data = await response.json().catch(() => null);
+
+      if (response.ok && data && data.success && data.user) {
+        if (data.token) {
+          setAuthToken(data.token);
+        }
+        setCurrentUser(data.user);
+        localStorage.setItem('kalpanaaa_auth_user', JSON.stringify(data.user));
+        setSandboxState({ isPreview: false, previewRole: null, realUser: null });
+        return { success: true, user: data.user, role: data.user.role };
+      } else if (data && data.message) {
+        setAuthError(data.message);
+        return { success: false, error: data.message };
+      }
+    } catch (err) {
+      console.warn('[AuthContext] Backend server unreachable. Falling back to local offline user pool:', err.message);
+    }
+
+    // 2. Offline Fallback User Match (Only when backend server is completely unreachable)
     const fullUserPool = [...(users || []), ...INITIAL_USERS];
 
     const localUser = fullUserPool.find(u => {
@@ -85,8 +101,7 @@ export const AuthProvider = ({ children, users = [] }) => {
         password === 'admin123' || 
         password === 'teacher123' || 
         password === 'student123' ||
-        password === '123456' ||
-        (u.role === 'ADMIN' && (password === 'admin123' || password === '123456'));
+        password === '123456';
 
       return (emailMatch || idMatch) && passMatch;
     });
@@ -94,39 +109,9 @@ export const AuthProvider = ({ children, users = [] }) => {
     if (localUser) {
       setCurrentUser(localUser);
       localStorage.setItem('kalpanaaa_auth_user', JSON.stringify(localUser));
-      setAuthToken(`local-session-token-${localUser.id || 'usr'}`);
+      setAuthToken(`local-dev-fallback-${localUser.id || 'usr'}`);
       setSandboxState({ isPreview: false, previewRole: null, realUser: null });
       return { success: true, user: localUser, role: localUser.role };
-    }
-
-    // 2. Fast MySQL API Server Login (with 1.5s timeout)
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 1500);
-
-      const response = await fetch(`${API_BASE}/auth/login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ identifier: cleanId, password }),
-        signal: controller.signal
-      });
-
-      clearTimeout(timeoutId);
-
-      if (response.ok) {
-        const data = await response.json();
-        if (data.success && data.user) {
-          if (data.token) {
-            setAuthToken(data.token);
-          }
-          setCurrentUser(data.user);
-          localStorage.setItem('kalpanaaa_auth_user', JSON.stringify(data.user));
-          setSandboxState({ isPreview: false, previewRole: null, realUser: null });
-          return { success: true, user: data.user, role: data.user.role };
-        }
-      }
-    } catch (err) {
-      // API timeout or offline
     }
 
     setAuthError('Invalid credentials. Please verify your Email/ID and Password.');

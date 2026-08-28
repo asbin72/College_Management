@@ -6,6 +6,7 @@ import { Sidebar } from '../../components/portal/Sidebar';
 import { FloatingHelpdesk } from '../../components/portal/FloatingHelpdesk';
 import { BookOpen, Clock, Award, DollarSign, Megaphone, Search, ArrowUpDown, Calendar } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { getApiBaseUrl, getAuthHeaders } from '../../utils/apiClient';
 
 export const StudentDashboard = () => {
   const { currentUser } = useAuth();
@@ -110,14 +111,9 @@ export const StudentDashboard = () => {
   React.useEffect(() => {
     async function fetchTodaySubjects() {
       try {
-        const getApiBase = () => {
-          if (import.meta.env.VITE_API_BASE) return import.meta.env.VITE_API_BASE;
-          if (typeof window !== 'undefined' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
-            return 'https://collegemanagement-production.up.railway.app/api';
-          }
-          return 'http://localhost:5000/api';
-        };
-        const res = await fetch(`${getApiBase()}/students/${studentCode}/today-subjects`);
+        const res = await fetch(`${getApiBaseUrl()}/students/${studentCode}/today-subjects`, {
+          headers: getAuthHeaders()
+        });
         if (res.ok) {
           const data = await res.json();
           if (Array.isArray(data.todaySubjects) && data.todaySubjects.length > 0) {

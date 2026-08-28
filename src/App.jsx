@@ -234,11 +234,15 @@ function AppRoutes() {
   );
 }
 
-// Outer App: DataProvider first, then AppRoutes mounts AuthProvider inside
+import ErrorBoundary from './components/common/ErrorBoundary';
+
+// Outer App: ErrorBoundary first, DataProvider second, then AppRoutes mounts AuthProvider inside
 export default function App() {
   return (
-    <DataProvider>
-      <AppRoutes />
-    </DataProvider>
+    <ErrorBoundary>
+      <DataProvider>
+        <AppRoutes />
+      </DataProvider>
+    </ErrorBoundary>
   );
 }

@@ -6,6 +6,7 @@ import { Sidebar } from '../../components/portal/Sidebar';
 import { Clock, AlertCircle, ArrowRight, AlertTriangle } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { getEnrolledStudentCount } from '../../utils/idGenerator';
+import { getApiBaseUrl, getAuthHeaders } from '../../utils/apiClient';
 
 export const TeacherDashboard = () => {
   const { currentUser } = useAuth();
@@ -25,14 +26,9 @@ export const TeacherDashboard = () => {
   React.useEffect(() => {
     async function fetchSummary() {
       try {
-        const getApiBase = () => {
-          if (import.meta.env.VITE_API_BASE) return import.meta.env.VITE_API_BASE;
-          if (typeof window !== 'undefined' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
-            return 'https://collegemanagement-production.up.railway.app/api';
-          }
-          return 'http://localhost:5000/api';
-        };
-        const res = await fetch(`${getApiBase()}/teachers/${teacherId}/dashboard-summary`);
+        const res = await fetch(`${getApiBaseUrl()}/teachers/${teacherId}/dashboard-summary`, {
+          headers: getAuthHeaders()
+        });
         if (res.ok) {
           const data = await res.json();
           setLiveSummary(data);

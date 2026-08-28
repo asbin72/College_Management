@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Breadcrumbs } from '../../components/common/Breadcrumbs';
 import { MapPin, Phone, Mail, Clock, Send, CheckCircle2 } from 'lucide-react';
+import { getApiBaseUrl } from '../../utils/apiClient';
 
 export const Contact = () => {
   const [submitted, setSubmitted] = useState(false);
@@ -8,14 +9,6 @@ export const Contact = () => {
   const [error, setError] = useState('');
   const [emailError, setEmailError] = useState('');
   const [formData, setFormData] = useState({ name: '', email: '', phone: '', subject: '', message: '' });
-
-  const getApiBase = () => {
-    if (import.meta.env.VITE_API_BASE) return import.meta.env.VITE_API_BASE;
-    if (typeof window !== 'undefined' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
-      return 'https://collegemanagement-production.up.railway.app/api';
-    }
-    return 'http://localhost:3000/api';
-  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -28,7 +21,7 @@ export const Contact = () => {
     setLoading(true);
 
     try {
-      const res = await fetch(`${getApiBase()}/contact`, {
+      const res = await fetch(`${getApiBaseUrl()}/contact`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formData)
