@@ -323,13 +323,13 @@ function securityRouteGuard(req, res, next) {
       const p = cleanPath;
       const role = req.user?.role;
 
-      if (p.startsWith('/api/admin') || p.startsWith('/api/announcements')) {
+      if (p.startsWith('/api/admin')) {
         if (role !== 'ADMIN') {
           return res.status(403).json({ success: false, message: `Forbidden: ${method} ${p} requires ADMIN role.` });
         }
-      } else if (p.startsWith('/api/teachers') || p.startsWith('/api/students') || p.startsWith('/api/departments') || p.startsWith('/api/courses') || p.startsWith('/api/subjects') || p.startsWith('/api/timetable') || p.startsWith('/api/faculty-assignments')) {
-        if (role !== 'ADMIN') {
-          return res.status(403).json({ success: false, message: `Forbidden: ${method} ${p} requires ADMIN role.` });
+      } else if (p.startsWith('/api/teachers') || p.startsWith('/api/students') || p.startsWith('/api/departments') || p.startsWith('/api/courses') || p.startsWith('/api/subjects') || p.startsWith('/api/timetable') || p.startsWith('/api/faculty-assignments') || p.startsWith('/api/announcements')) {
+        if (!['ADMIN', 'TEACHER'].includes(role)) {
+          return res.status(403).json({ success: false, message: `Forbidden: ${method} ${p} requires ADMIN or TEACHER role.` });
         }
       } else if (p.startsWith('/api/attendance') || p.startsWith('/api/teacher-attendance') || p.startsWith('/api/marks') || p.startsWith('/api/assignments')) {
         if (!['ADMIN', 'TEACHER'].includes(role)) {

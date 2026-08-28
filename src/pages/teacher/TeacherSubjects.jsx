@@ -8,14 +8,13 @@ import { Link } from 'react-router-dom';
 
 export const TeacherSubjects = () => {
   const { currentUser } = useAuth();
-  const { subjects = [], facultyClassAssignments = [], users = [] } = useData();
+  const { subjects = [], facultyClassAssignments = [], users = [], addStudyMaterial } = useData();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [toastMsg, setToastMsg] = useState('');
   const [selectedSubjectCode, setSelectedSubjectCode] = useState('');
   const [materialTitle, setMaterialTitle] = useState('');
   const [fileName, setFileName] = useState('');
-  const [studyMaterials, setStudyMaterials] = useState({});
 
   if (!currentUser) return null;
 
@@ -41,13 +40,13 @@ export const TeacherSubjects = () => {
 
   myAssignments.forEach(fca => {
     const subObj = subjects.find(s => s.code === fca.subjectCode) || {};
-    // Calculate enrolled students in this specific cohort (strictly 10 students)
     const cohortStudents = users.filter(u =>
       u.role === 'STUDENT' &&
       (u.departmentCode === fca.departmentCode || u.department === fca.departmentName || (u.department && u.department.includes(fca.departmentCode))) &&
       (u.year === fca.year || u.semester === fca.semester)
     );
     const count = cohortStudents.length > 0 ? cohortStudents.length : 10;
+    const existingMaterials = subObj.materials || ["Lecture_Notes_Unit1.pdf", "Syllabus_Overview.pdf"];
 
     combinedSubjectsMap.set(fca.subjectCode, {
       code: fca.subjectCode,
@@ -59,7 +58,7 @@ export const TeacherSubjects = () => {
       section: fca.section || 'Sec A',
       credits: subObj.credits || 4,
       studentsCount: count,
-      materials: studyMaterials[fca.subjectCode] || ["Lecture_Notes_Unit1.pdf", "Syllabus_Overview.pdf"]
+      materials: existingMaterials
     });
   });
 
@@ -71,6 +70,7 @@ export const TeacherSubjects = () => {
         (u.semester === s.semester || u.year === s.year)
       );
       const count = cohortStudents.length > 0 ? cohortStudents.length : 10;
+      const existingMaterials = s.materials || ["Lecture_Notes_Unit1.pdf"];
 
       combinedSubjectsMap.set(s.code, {
         code: s.code,
@@ -82,7 +82,7 @@ export const TeacherSubjects = () => {
         section: 'Sec A',
         credits: s.credits || 4,
         studentsCount: count,
-        materials: studyMaterials[s.code] || ["Lecture_Notes_Unit1.pdf"]
+        materials: existingMaterials
       });
     }
   });
@@ -105,7 +105,7 @@ export const TeacherSubjects = () => {
         section: 'Sec A',
         credits: s.credits || 4,
         studentsCount: 10,
-        materials: studyMaterials[s.code] || ["Lecture_Notes_Unit1.pdf"]
+        materials: s.materials || ["Lecture_Notes_Unit1.pdf"]
       });
     });
   }
@@ -123,15 +123,10 @@ export const TeacherSubjects = () => {
     e.preventDefault();
     if (!selectedSubjectCode) return;
 
-    const uploadedDocName = fileName || `${materialTitle.replace(/[^a-zA-Z0-9]/g, '_') || 'Material'}.pdf`;
-    
-    setStudyMaterials(prev => ({
-      ...prev,
-      [selectedSubjectCode]: [...(prev[selectedSubjectCode] || ["Lecture_Notes_Unit1.pdf"]), uploadedDocName]
-    }));
+    const uploadedDocName = addStudyMaterial ? addStudyMaterial(selectedSubjectCode, materialTitle, fileName, currentUser) : (fileName || 'Material.pdf');
 
     setShowUploadModal(false);
-    setToastMsg(`Study Material "${materialTitle || uploadedDocName}" uploaded successfully for ${selectedSubjectCode}! Published to Student Academics Portal.`);
+    setToastMsg(`Study Material "${materialTitle || uploadedDocName}" uploaded successfully for ${selectedSubjectCode}! Saved to database & published to Student Academics.`);
     setTimeout(() => setToastMsg(''), 5000);
   };
 

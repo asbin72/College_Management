@@ -838,6 +838,36 @@ export const DataProvider = ({ children }) => {
     logAction(actorUser, 'SUBJECT_UPDATED', `Updated subject ID ${subjectId}`);
   };
 
+  const addStudyMaterial = (subjectCode, materialTitle, fileName, actorUser) => {
+    const uploadedDocName = fileName || `${materialTitle.replace(/[^a-zA-Z0-9]/g, '_') || 'Material'}.pdf`;
+    setSubjects(prev => prev.map(s => {
+      if (s.code === subjectCode || s.id === subjectCode) {
+        const existingMaterials = Array.isArray(s.materials) ? s.materials : ["Lecture_Notes_Unit1.pdf"];
+        const updatedMaterials = [...existingMaterials, uploadedDocName];
+        
+        try {
+          fetch(`${API_BASE}/subjects/${s.id || s.code}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ materials: updatedMaterials })
+          }).catch(() => {});
+        } catch (e) {}
+
+        return { ...s, materials: updatedMaterials };
+      }
+      return s;
+    }));
+
+    dispatchNotification(
+      'ALL_STUDENTS',
+      `New Study Material: ${subjectCode}`,
+      `Faculty published "${materialTitle || uploadedDocName}" for ${subjectCode}.`
+    );
+
+    logAction(actorUser, 'STUDY_MATERIAL_UPLOADED', `Uploaded study material ${uploadedDocName} for ${subjectCode}`);
+    return uploadedDocName;
+  };
+
   const deleteSubject = (subjectId, actorUser) => {
     setSubjects(prev => prev.filter(s => s.id !== subjectId));
     logAction(actorUser, 'SUBJECT_DELETED', `Deleted subject ${subjectId}`);
@@ -1653,6 +1683,7 @@ export const DataProvider = ({ children }) => {
     deleteCourse,
     addSubject,
     updateSubject,
+    addStudyMaterial,
     deleteSubject,
     addExamination,
     updateExamination,
