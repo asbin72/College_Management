@@ -4,9 +4,15 @@ import cors from 'cors';
 import mysql from 'mysql2/promise';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import { initializeDatabase } from './init_db.js';
 import { globalErrorHandler, asyncHandler, AppError } from './middleware/errorHandler.js';
 import { authRateLimiter, publicApiRateLimiter } from './middleware/rateLimiter.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const distPath = path.join(__dirname, '../dist');
 
 const app = express();
 const PORT = process.env.PORT || process.env.RAILWAY_PORT || 3000;
@@ -1017,7 +1023,7 @@ app.get('/api/admissions/applications', async (req, res) => {
   }
 });
 
-app.post('/api/admissions/apply', async (req, res) => {
+app.post('/api/admissions/apply', publicApiRateLimiter, async (req, res) => {
   const appData = req.body;
   const { 
     dob, fullName, email, phone, gender, course, department, 
@@ -1117,32 +1123,79 @@ app.get('/api/fees', async (req, res) => {
 });
 
 app.post('/api/fees/pay', async (req, res) => {
-  const { studentId, amount, feeType, paymentMethod } = req.body;
-  const txnId = `TXN-FEE-${Date.now()}`;
+  const { studentId, amount, feeType, paymentMethod, idempotencyKey } = req.body;
+  if (!studentId || !amount) {
+    return res.status(400).json({ success: false, message: 'Student ID and amount are required.' });
+  }
+
   const numAmount = Number(amount || 0);
+  const cleanFeeType = feeType || 'Tuition Fee';
+  const ik = idempotencyKey || req.headers['x-idempotency-key'] || `IDEM-${studentId}-${cleanFeeType}-${numAmount}`;
+
+  const conn = await dbPool.getConnection();
   try {
-    await dbPool.query(`
+    await conn.beginTransaction();
+
+    // Check if idempotency key already exists or duplicate transaction within 15 seconds
+    const [existingTxn] = await conn.query(
+      `SELECT * FROM fee_payments 
+       WHERE idempotency_key = ? OR (student_id = ? AND fee_type = ? AND amount = ? AND created_at >= NOW() - INTERVAL 15 SECOND)
+       LIMIT 1`,
+      [ik, studentId, cleanFeeType, numAmount]
+    );
+
+    if (existingTxn.length > 0) {
+      await conn.rollback();
+      conn.release();
+      const existing = existingTxn[0];
+      return res.json({
+        success: true,
+        idempotentDuplicate: true,
+        txnId: existing.transaction_id || existing.id,
+        message: 'Duplicate payment request blocked by Idempotency Engine. Previous transaction returned.'
+      });
+    }
+
+    const txnId = `TXN-FEE-${Date.now()}-${Math.floor(100 + Math.random() * 900)}`;
+    await conn.query(`
       INSERT INTO fee_payments (id, student_id, fee_type, amount, payment_method, transaction_id, idempotency_key, status, created_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, 'Completed', NOW())
-    `, [txnId, studentId, feeType || 'Tuition Fee', numAmount, paymentMethod || 'Online', txnId, `IDEM-${txnId}`]);
+    `, [txnId, studentId, cleanFeeType, numAmount, paymentMethod || 'Online', txnId, ik]);
 
-    await dbPool.query(`
+    await conn.query(`
       UPDATE students 
       SET pendingFees = GREATEST(0, pendingFees - ?)
       WHERE id = ? OR studentId = ?
     `, [numAmount, studentId, studentId]);
 
-    // Create notification for student
     const notifId = `NOTIF-${Date.now()}`;
-    await dbPool.query(`
+    await conn.query(`
       INSERT INTO notifications (id, userId, userRole, title, message, date, isRead)
       VALUES (?, ?, 'STUDENT', 'Fee Payment Receipt Confirmed', ?, NOW(), 0)
-    `, [notifId, studentId, `Your fee payment of ₹${numAmount.toLocaleString()} (${feeType || 'Tuition Fee'}) was successfully processed. Txn ID: ${txnId}`]);
+    `, [notifId, studentId, `Your fee payment of ₹${numAmount.toLocaleString()} (${cleanFeeType}) was successfully processed. Txn ID: ${txnId}`]);
+
+    await conn.commit();
+    conn.release();
 
     broadcastRealTimeEvent('FEE_PAYMENT_RECORDED', { studentId, amount: numAmount, txnId });
     res.json({ success: true, txnId, message: 'Fee payment recorded and balance deducted.' });
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
+    await conn.rollback();
+    conn.release();
+    if (err.code === 'ER_DUP_ENTRY' || (err.message && err.message.includes('idempotency'))) {
+      try {
+        const [rows] = await dbPool.query('SELECT * FROM fee_payments WHERE idempotency_key = ? LIMIT 1', [ik]);
+        if (rows.length > 0) {
+          return res.json({
+            success: true,
+            idempotentDuplicate: true,
+            txnId: rows[0].transaction_id || rows[0].id,
+            message: 'Duplicate payment request blocked by Idempotency Engine. Previous transaction returned.'
+          });
+        }
+      } catch (e) {}
+    }
+    res.status(500).json({ success: false, message: err.message || 'Fee payment failed.' });
   }
 });
 
@@ -1936,7 +1989,7 @@ app.post('/api/marks', async (req, res) => {
   }
 });
 
-app.post('/api/contact', async (req, res) => {
+app.post('/api/contact', publicApiRateLimiter, async (req, res) => {
   const { name, email, phone, subject, message } = req.body || {};
   if (!name || !email || !message) {
     return res.status(400).json({ success: false, message: 'Name, email, and message are required.' });
@@ -2250,6 +2303,19 @@ app.post('/api/admin/clean-demo-data', authenticateToken, requireRole(['ADMIN'])
   }
 });
 
+// Serve Vite Production Build Static Assets
+app.use(express.static(distPath));
+
+// SPA Catch-All Handler (fallback for React Router frontend routes)
+app.get('*', (req, res, next) => {
+  if (req.path.startsWith('/api') || req.path.startsWith('/health')) {
+    return next();
+  }
+  res.sendFile(path.join(distPath, 'index.html'), (err) => {
+    if (err) next();
+  });
+});
+
 // 404 Route Handler for undefined API routes
 app.use('/api/*', (req, res, next) => {
   res.status(404).json({
@@ -2291,6 +2357,11 @@ const gracefulShutdown = async (signal) => {
 
 process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+process.on('message', (msg) => {
+  if (msg === 'shutdown' || msg === 'SIGTERM') {
+    gracefulShutdown('SIGTERM');
+  }
+});
 
 process.on('uncaughtException', (err) => {
   console.error('CRITICAL: Uncaught Exception detected:', err);

@@ -321,9 +321,11 @@ async function createTablesIfNotExist(connection) {
       amount DECIMAL(10,2) NOT NULL,
       payment_method VARCHAR(50),
       transaction_id VARCHAR(100),
-      idempotency_key VARCHAR(100),
+      idempotency_key VARCHAR(100) UNIQUE,
       status VARCHAR(20) DEFAULT 'Completed',
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      INDEX idx_student_fee (student_id),
+      UNIQUE KEY idx_idempotency_key (idempotency_key)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;`,
 
     `CREATE TABLE IF NOT EXISTS admission_applications (
