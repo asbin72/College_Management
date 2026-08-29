@@ -15,7 +15,7 @@ const __dirname = path.dirname(__filename);
 const distPath = path.join(__dirname, '../dist');
 
 const app = express();
-const PORT = process.env.PORT || process.env.RAILWAY_PORT || 3000;
+const PORT = process.env.PORT || process.env.RAILWAY_PORT || 5000;
 const JWT_SECRET = process.env.JWT_SECRET || 'kalpanaaa_super_secret_jwt_key_2026_prod';
 if (!process.env.JWT_SECRET) {
   console.warn('⚠️ WARNING: JWT_SECRET environment variable is not explicitly defined. Using default fallback key.');
