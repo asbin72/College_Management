@@ -378,6 +378,20 @@ async function createTablesIfNotExist(connection) {
       author VARCHAR(150),
       date VARCHAR(20),
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;`,
+
+    `CREATE TABLE IF NOT EXISTS staff_subject_assignments (
+      id VARCHAR(100) PRIMARY KEY,
+      teacherId VARCHAR(50) NOT NULL,
+      teacherName VARCHAR(150) NOT NULL,
+      subjectId VARCHAR(50) NOT NULL,
+      subjectCode VARCHAR(20) NOT NULL,
+      subjectName VARCHAR(150),
+      courseId VARCHAR(50),
+      courseName VARCHAR(150),
+      department VARCHAR(100),
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      INDEX idx_staff_subject (teacherId, subjectId)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;`
   ];
 

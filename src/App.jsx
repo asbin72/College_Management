@@ -72,6 +72,7 @@ import { AdminStudents } from './pages/admin/AdminStudents';
 import { AdminTeachers } from './pages/admin/AdminTeachers';
 import { AdminDepartments } from './pages/admin/AdminDepartments';
 import { AdminCourses } from './pages/admin/AdminCourses';
+import { AdminCoursesHierarchy } from './pages/admin/AdminCoursesHierarchy';
 import { AdminCourseSubjects } from './pages/admin/AdminCourseSubjects';
 import { AdminSubjects } from './pages/admin/AdminSubjects';
 import { AdminAttendance } from './pages/admin/AdminAttendance';
@@ -223,9 +224,10 @@ function AppRoutes() {
         <Route path="/admin/students" element={<RoleGuard allowedRoles={['ADMIN']}><AdminStudents /></RoleGuard>} />
         <Route path="/admin/teachers" element={<RoleGuard allowedRoles={['ADMIN']}><AdminTeachers /></RoleGuard>} />
         <Route path="/admin/departments" element={<RoleGuard allowedRoles={['ADMIN']}><AdminDepartments /></RoleGuard>} />
-        <Route path="/admin/courses" element={<RoleGuard allowedRoles={['ADMIN']}><AdminCourses /></RoleGuard>} />
-        <Route path="/admin/courses/:courseId/subjects" element={<RoleGuard allowedRoles={['ADMIN']}><AdminCourseSubjects /></RoleGuard>} />
-        <Route path="/admin/subjects" element={<Navigate to="/admin/courses" replace />} />
+        <Route path="/admin/courses-hierarchy" element={<RoleGuard allowedRoles={['ADMIN']}><AdminCoursesHierarchy /></RoleGuard>} />
+        <Route path="/admin/courses" element={<RoleGuard allowedRoles={['ADMIN']}><AdminCoursesHierarchy /></RoleGuard>} />
+        <Route path="/admin/courses/:courseId/subjects" element={<RoleGuard allowedRoles={['ADMIN']}><AdminCoursesHierarchy /></RoleGuard>} />
+        <Route path="/admin/subjects" element={<RoleGuard allowedRoles={['ADMIN']}><AdminCoursesHierarchy /></RoleGuard>} />
         <Route path="/admin/attendance" element={<RoleGuard allowedRoles={['ADMIN']}><AdminAttendance /></RoleGuard>} />
         <Route path="/admin/exams" element={<RoleGuard allowedRoles={['ADMIN']}><AdminExams /></RoleGuard>} />
         <Route path="/admin/leave" element={<RoleGuard allowedRoles={['ADMIN']}><AdminLeave /></RoleGuard>} />

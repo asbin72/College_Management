@@ -4,6 +4,7 @@ import { useData } from '../../context/DataContext';
 import { PortalHeader } from '../../components/portal/PortalHeader';
 import { Sidebar } from '../../components/portal/Sidebar';
 import { Send, ShieldCheck, UserCheck } from 'lucide-react';
+import { getApiBaseUrl, getAuthHeaders } from '../../utils/apiClient';
 
 export const TeacherAttendance = () => {
   const { currentUser } = useAuth();
@@ -135,6 +136,30 @@ export const TeacherAttendance = () => {
     setRosterStatus(allPresent);
   };
 
+  const handleAutoActivateAndLogToday = async () => {
+    markAllPresent();
+    const records = displayClassStudents.map(stu => ({
+      studentId: stu.studentId || stu.username || stu.id,
+      studentName: stu.name,
+      subjectCode: currentSubjectObj.code,
+      subjectName: currentSubjectObj.name,
+      date: attendanceDate,
+      status: 'Present'
+    }));
+
+    markAttendance(records, currentUser);
+
+    try {
+      await fetch(`${getApiBaseUrl()}/students/activate-all`, {
+        method: 'POST',
+        headers: getAuthHeaders()
+      });
+    } catch (e) {}
+
+    setSuccessMsg(`⚡ Success: Activated all student accounts & recorded attendance (${records.length} students marked Present for ${currentSubjectObj.code})!`);
+    setTimeout(() => setSuccessMsg(''), 6000);
+  };
+
   return (
     <div className="flex min-h-screen bg-slate-100 font-sans">
       <Sidebar mobileOpen={mobileOpen} setMobileOpen={setMobileOpen} />
@@ -156,8 +181,21 @@ export const TeacherAttendance = () => {
               <h1 className="text-2xl font-serif font-bold text-navy mt-1">Mark Student Class Attendance</h1>
               <p className="text-slate-500 text-xs mt-1">Select assigned subject, date, mark Present/Absent, and submit to central database.</p>
             </div>
-            <div className="bg-navy text-gold px-3.5 py-2 rounded-xl text-xs font-bold flex items-center border border-gold/30">
-              <ShieldCheck className="w-4 h-4 mr-1.5" /> STAFF VERIFIED
+
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={handleAutoActivateAndLogToday}
+                className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs px-3.5 py-2 rounded-xl flex items-center space-x-1.5 shadow-sm transition-all"
+                title="Activate all student accounts and auto-log Present status for today"
+              >
+                <UserCheck className="w-4 h-4" />
+                <span>⚡ Activate Accounts & Auto-Log Today</span>
+              </button>
+
+              <div className="bg-navy text-gold px-3.5 py-2 rounded-xl text-xs font-bold flex items-center border border-gold/30">
+                <ShieldCheck className="w-4 h-4 mr-1.5" /> STAFF VERIFIED
+              </div>
             </div>
           </div>
 

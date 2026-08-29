@@ -50,17 +50,13 @@ export const DataProvider = ({ children }) => {
   
   const [departments, setDepartments] = useState(() => safeLoadStorage('kalpanaaa_data_departments_v5', INITIAL_DEPARTMENTS));
 
-  const [courses, setCourses] = useState(() => {
-    const cached = safeLoadStorage('kalpanaaa_data_courses_v5', null);
-    if (cached && Array.isArray(cached) && cached.length >= INITIAL_COURSES.length) return cached;
-    return INITIAL_COURSES;
-  });
-
   const [subjects, setSubjects] = useState(() => {
     const cached = safeLoadStorage('kalpanaaa_data_subjects_v5', null);
     if (cached && Array.isArray(cached) && cached.length >= INITIAL_SUBJECTS.length) return cached;
     return INITIAL_SUBJECTS;
   });
+
+  const courses = subjects;
 
   const [subjectOfferings, setSubjectOfferings] = useState(() => {
     const cached = safeLoadStorage('kalpanaaa_data_subject_offerings_v5', null);
@@ -73,6 +69,21 @@ export const DataProvider = ({ children }) => {
     if (Array.isArray(cached) && cached.length > 0) return cached;
     return generateFacultyAndAssignments().assignments;
   });
+
+  const [staffSubjectAssignments, setStaffSubjectAssignments] = useState(() => {
+    return safeLoadStorage('kalpanaaa_data_staff_subject_assignments_v5', []);
+  });
+
+  const [activeStaffClassId, setActiveStaffClassId] = useState(() => safeLoadStorage('kalpanaaa_active_staff_class_v1', 'ALL'));
+
+  useEffect(() => {
+    try { localStorage.setItem('kalpanaaa_data_staff_subject_assignments_v5', JSON.stringify(staffSubjectAssignments)); } catch (e) {}
+  }, [staffSubjectAssignments]);
+
+  const selectActiveStaffClass = (classId) => {
+    setActiveStaffClassId(classId);
+    try { localStorage.setItem('kalpanaaa_active_staff_class_v1', JSON.stringify(classId)); } catch (e) {}
+  };
 
   const [attendance, setAttendance] = useState(() => safeLoadStorage('kalpanaaa_data_attendance_v5', INITIAL_ATTENDANCE));
 
@@ -752,64 +763,11 @@ export const DataProvider = ({ children }) => {
   };
 
   // -------------------------------------------------------------
-  // COURSE MANAGEMENT CRUD
+  // COURSE MANAGEMENT CRUD (ALIAS TO SUBJECTS)
   // -------------------------------------------------------------
-  const addCourse = async (courseData, actorUser) => {
-    const newCourse = {
-      id: `crs-${Date.now()}`,
-      name: courseData.name,
-      code: courseData.code,
-      department: courseData.department || 'Computer Science & Engineering',
-      departmentCode: courseData.departmentCode || (courseData.code ? String(courseData.code).split('-')[0] : 'CSE'),
-      semester: courseData.semester || 'Semester 1',
-      credits: Number(courseData.credits || 4),
-      courseType: courseData.type || courseData.courseType || 'Core Theory',
-      assignedTeacherName: courseData.assignedTeacherName || 'Faculty In-Charge',
-      status: courseData.status || 'Active'
-    };
-    setCourses(prev => [newCourse, ...prev]);
-    setSubjects(prev => [newCourse, ...prev]);
-    setSubjectOfferings(prev => [newCourse, ...prev]);
-
-    try {
-      await fetch(`${API_BASE}/courses`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newCourse)
-      });
-    } catch (e) {}
-
-    logAction(actorUser, 'COURSE_CREATED', `Created course ${newCourse.name} (${newCourse.code})`);
-    return newCourse;
-  };
-
-  const updateCourse = async (courseId, updatedFields, actorUser) => {
-    setCourses(prev => prev.map(c => (c.id === courseId || c.code === courseId) ? { ...c, ...updatedFields } : c));
-    setSubjects(prev => prev.map(s => (s.id === courseId || s.code === courseId) ? { ...s, ...updatedFields } : s));
-    setSubjectOfferings(prev => prev.map(s => (s.id === courseId || s.code === courseId) ? { ...s, ...updatedFields } : s));
-
-    try {
-      await fetch(`${API_BASE}/courses/${courseId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(updatedFields)
-      });
-    } catch (e) {}
-
-    logAction(actorUser, 'COURSE_UPDATED', `Updated course ID ${courseId}`);
-  };
-
-  const deleteCourse = async (courseId, actorUser) => {
-    setCourses(prev => prev.filter(c => c.id !== courseId && c.code !== courseId));
-    setSubjects(prev => prev.filter(s => s.id !== courseId && s.code !== courseId));
-    setSubjectOfferings(prev => prev.filter(s => s.id !== courseId && s.code !== courseId));
-
-    try {
-      await fetch(`${API_BASE}/courses/${courseId}`, { method: 'DELETE' });
-    } catch (e) {}
-
-    logAction(actorUser, 'COURSE_DELETED', `Deleted course ${courseId}`);
-  };
+  const addCourse = (courseData, actorUser) => addSubject(courseData, actorUser);
+  const updateCourse = (courseId, updatedFields, actorUser) => updateSubject(courseId, updatedFields, actorUser);
+  const deleteCourse = (courseId, actorUser) => deleteSubject(courseId, actorUser);
 
   // -------------------------------------------------------------
   // SUBJECT MANAGEMENT CRUD
@@ -870,7 +828,76 @@ export const DataProvider = ({ children }) => {
 
   const deleteSubject = (subjectId, actorUser) => {
     setSubjects(prev => prev.filter(s => s.id !== subjectId));
+    setStaffSubjectAssignments(prev => prev.filter(a => a.subjectId !== subjectId && a.subjectCode !== subjectId));
     logAction(actorUser, 'SUBJECT_DELETED', `Deleted subject ${subjectId}`);
+  };
+
+  const assignStaffToSubject = (subjectId, teacherUser, subjectObj, actorUser) => {
+    const teacherId = teacherUser.employeeId || teacherUser.id || teacherUser.username;
+    const newAssignment = {
+      id: `ssa-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+      teacherId: teacherId,
+      teacherName: teacherUser.name || 'Faculty Member',
+      subjectId: subjectId,
+      subjectCode: subjectObj?.code || subjectId,
+      subjectName: subjectObj?.name || '',
+      courseId: subjectObj?.courseId || '',
+      department: subjectObj?.department || ''
+    };
+    setStaffSubjectAssignments(prev => {
+      if (prev.some(a => (a.subjectId === subjectId || a.subjectCode === subjectId) && (a.teacherId === teacherId))) {
+        return prev;
+      }
+      return [...prev, newAssignment];
+    });
+
+    setSubjects(prev => prev.map(s => {
+      if (s.id === subjectId || s.code === subjectId) {
+        return {
+          ...s,
+          assignedTeacherId: teacherId,
+          assignedTeacherName: teacherUser.name
+        };
+      }
+      return s;
+    }));
+
+    try {
+      fetch(`${API_BASE}/subjects/${subjectId}/staff`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newAssignment)
+      }).catch(() => {});
+    } catch (e) {}
+
+    logAction(actorUser, 'STAFF_ASSIGNED_TO_SUBJECT', `Assigned ${teacherUser.name} to subject ${subjectObj?.code || subjectId}`);
+  };
+
+  const unassignStaffFromSubject = (subjectId, teacherId, actorUser) => {
+    setStaffSubjectAssignments(prev => prev.filter(
+      a => !((a.subjectId === subjectId || a.subjectCode === subjectId) && a.teacherId === teacherId)
+    ));
+
+    try {
+      fetch(`${API_BASE}/subjects/${subjectId}/staff/${teacherId}`, {
+        method: 'DELETE'
+      }).catch(() => {});
+    } catch (e) {}
+
+    logAction(actorUser, 'STAFF_UNASSIGNED_FROM_SUBJECT', `Removed staff ${teacherId} from subject ${subjectId}`);
+  };
+
+  const getStudentsCountForCourse = (courseIdOrCodeOrName) => {
+    if (!courseIdOrCodeOrName) return 0;
+    const term = String(courseIdOrCodeOrName).toLowerCase().trim();
+    const studentsList = users.filter(u => u && (u.role === 'STUDENT' || u.studentId));
+    return studentsList.filter(st => {
+      const cName = (st.course || '').toLowerCase().trim();
+      const cId = (st.courseId || '').toLowerCase().trim();
+      const cDeptCode = (st.departmentCode || '').toLowerCase().trim();
+      const cDept = (st.department || '').toLowerCase().trim();
+      return cName.includes(term) || term.includes(cName) || cId === term || cDeptCode === term || cDept === term;
+    }).length;
   };
 
   // -------------------------------------------------------------
@@ -1640,6 +1667,12 @@ export const DataProvider = ({ children }) => {
     subjects,
     subjectOfferings,
     facultyClassAssignments,
+    staffSubjectAssignments,
+    assignStaffToSubject,
+    unassignStaffFromSubject,
+    getStudentsCountForCourse,
+    activeStaffClassId,
+    selectActiveStaffClass,
     allocateFacultyClassAssignment,
     removeFacultyClassAssignment,
     markAttendance,
@@ -1717,6 +1750,8 @@ export const DataProvider = ({ children }) => {
     subjects,
     subjectOfferings,
     facultyClassAssignments,
+    staffSubjectAssignments,
+    activeStaffClassId,
     examinations,
     marksRecords,
     leaveRequests,

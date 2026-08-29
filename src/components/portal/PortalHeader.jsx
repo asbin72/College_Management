@@ -24,8 +24,56 @@ export const PortalHeader = ({ setMobileOpen }) => {
     markNotificationAsRead,
     markAllNotificationsAsRead,
     clearNotifications,
-    deleteNotification
+    deleteNotification,
+    facultyClassAssignments = [],
+    staffSubjectAssignments = [],
+    activeStaffClassId = 'ALL',
+    selectActiveStaffClass
   } = useData();
+
+  // Resolve assigned classes for logged-in staff
+  const assignedClassesForStaff = useMemo(() => {
+    if (!currentUser || (currentUser.role !== 'TEACHER' && currentUser.role !== 'STAFF')) return [];
+
+    const tId = currentUser.employeeId || currentUser.username || currentUser.id || 'EMP-101';
+    const tName = currentUser.name || '';
+
+    const fca = (facultyClassAssignments || []).filter(
+      a => a.facultyId === tId || a.teacherId === tId || a.facultyName === tName || a.teacherName === tName
+    );
+
+    const ssa = (staffSubjectAssignments || []).filter(
+      a => a.teacherId === tId || a.teacherName === tName
+    );
+
+    const classMap = new Map();
+
+    fca.forEach(item => {
+      const key = item.classId || `${item.subjectCode || item.courseId || 'CLS'}-${item.year || item.semester}`;
+      if (!classMap.has(key)) {
+        classMap.set(key, {
+          id: key,
+          label: `${item.subjectName || item.subjectCode} (${item.departmentCode || 'Dept'} - ${item.year || item.semester})`,
+          subjectCode: item.subjectCode,
+          deptCode: item.departmentCode
+        });
+      }
+    });
+
+    ssa.forEach(item => {
+      const key = item.subjectId || item.subjectCode;
+      if (!classMap.has(key)) {
+        classMap.set(key, {
+          id: key,
+          label: `${item.subjectName || item.subjectCode} (${item.department || item.courseName || 'Course'})`,
+          subjectCode: item.subjectCode,
+          deptCode: item.department
+        });
+      }
+    });
+
+    return Array.from(classMap.values());
+  }, [currentUser, facultyClassAssignments, staffSubjectAssignments]);
   const [showNotifs, setShowNotifs] = useState(false);
   const [pushPerm, setPushPerm] = useState(() => getNotificationPermission());
   const notifDropdownRef = useRef(null);
@@ -258,6 +306,33 @@ export const PortalHeader = ({ setMobileOpen }) => {
           <span className="text-[11px] sm:text-xs font-bold uppercase tracking-widest text-navy bg-slate-100 px-2.5 sm:px-3 py-1 rounded-full border border-slate-200 truncate">
             KALPANAAA CMS &bull; {currentUser.role}
           </span>
+
+          {/* STAFF MULTI-CLASS SWITCHER DROPDOWN (Shown if 2+ classes assigned) */}
+          {(currentUser.role === 'TEACHER' || currentUser.role === 'STAFF') && assignedClassesForStaff.length >= 2 && (
+            <div className="flex items-center space-x-1.5 bg-navy/10 border border-navy/20 px-2.5 py-1 rounded-xl">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-navy hidden md:inline">Switch Class:</span>
+              <select
+                value={activeStaffClassId}
+                onChange={(e) => selectActiveStaffClass && selectActiveStaffClass(e.target.value)}
+                className="bg-white text-navy font-bold text-xs py-1 px-2 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-navy cursor-pointer"
+              >
+                <option value="ALL">All Assigned Classes ({assignedClassesForStaff.length})</option>
+                {assignedClassesForStaff.map(c => (
+                  <option key={c.id} value={c.id}>
+                    {c.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {/* SINGLE CLASS BADGE (Shown if exactly 1 class assigned) */}
+          {(currentUser.role === 'TEACHER' || currentUser.role === 'STAFF') && assignedClassesForStaff.length === 1 && (
+            <div className="hidden sm:flex items-center space-x-1 bg-navy/10 border border-navy/20 text-navy font-bold text-xs px-2.5 py-1 rounded-xl" title="Assigned Teaching Class">
+              <span className="text-[10px] uppercase font-bold text-navy/70">Class:</span>
+              <span className="truncate max-w-[150px]">{assignedClassesForStaff[0].label}</span>
+            </div>
+          )}
         </div>
 
         {/* Right User Controls */}

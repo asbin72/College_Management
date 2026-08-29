@@ -43,7 +43,7 @@ export const Sidebar = ({ mobileOpen, setMobileOpen }) => {
     { label: 'Dashboard', path: '/admin/control', icon: LayoutDashboard },
     { label: 'Admissions', path: '/admin/admissions', icon: UserCheck },
     { label: 'Departments', path: '/admin/departments', icon: Building },
-    { label: 'Subjects', path: '/admin/courses', icon: BookOpen },
+    { label: 'Subjects & Curriculum', path: '/admin/courses-hierarchy', icon: BookOpen },
     { label: 'Teachers', path: '/admin/teachers', icon: Users },
     { label: 'Students', path: '/admin/students', icon: Users },
     { label: 'Attendance', path: '/admin/attendance', icon: Clock },

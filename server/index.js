@@ -750,6 +750,17 @@ app.post('/api/students', async (req, res) => {
   }
 });
 
+app.post('/api/students/activate-all', async (req, res) => {
+  try {
+    await dbPool.query("UPDATE students SET status = 'Active'");
+    await dbPool.query("UPDATE teachers SET status = 'Active'");
+    broadcastRealTimeEvent('ACCOUNTS_ACTIVATED_ALL', { timestamp: new Date().toISOString() });
+    res.json({ success: true, message: 'All student and staff accounts set to Active status.' });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 app.delete('/api/students/:id', async (req, res) => {
   const { id } = req.params;
   try {
@@ -821,10 +832,10 @@ app.delete('/api/teachers/:id', async (req, res) => {
   }
 });
 
-// --- COURSES ENDPOINTS ---
+// --- COURSES & SUBJECTS UNIFIED ENDPOINTS ---
 app.get('/api/courses', async (req, res) => {
   try {
-    const [rows] = await dbPool.query('SELECT * FROM courses ORDER BY code ASC');
+    const [rows] = await dbPool.query('SELECT * FROM subjects ORDER BY code ASC');
     res.json(rows);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -910,9 +921,29 @@ app.put('/api/courses/:id', async (req, res) => {
 
 app.delete('/api/courses/:id', async (req, res) => {
   const { id } = req.params;
+  const { force } = req.query;
   try {
     const [[existing]] = await dbPool.query('SELECT * FROM courses WHERE id = ? OR code = ?', [id, id]);
     const targetCode = existing ? existing.code : id;
+    const targetId = existing ? existing.id : id;
+
+    if (force !== 'true' && existing) {
+      const [subjRows] = await dbPool.query('SELECT COUNT(*) as count FROM subjects WHERE courseId = ? OR code = ?', [targetId, targetCode]);
+      const [studentRows] = await dbPool.query('SELECT COUNT(*) as count FROM students WHERE course = ? OR course = ?', [existing.name, targetCode]);
+      
+      const subjCount = subjRows[0]?.count || 0;
+      const studentCount = studentRows[0]?.count || 0;
+
+      if (subjCount > 0 || studentCount > 0) {
+        return res.status(400).json({
+          success: false,
+          error: `Cannot delete course "${existing.name}" because it contains ${subjCount} subject(s) and ${studentCount} enrolled student(s). Clear subjects/students first or confirm forced deletion.`,
+          hasChildren: true,
+          subjCount,
+          studentCount
+        });
+      }
+    }
 
     await dbPool.query('DELETE FROM courses WHERE id = ? OR code = ?', [id, id]);
     await dbPool.query('DELETE FROM subjects WHERE id = ? OR code = ?', [id, targetCode]).catch(() => {});
@@ -1006,10 +1037,90 @@ app.delete('/api/subjects/:id', async (req, res) => {
   const { id } = req.params;
   try {
     await dbPool.query('DELETE FROM subjects WHERE id = ? OR code = ?', [id, id]);
+    await dbPool.query('DELETE FROM staff_subject_assignments WHERE subjectId = ? OR subjectCode = ?', [id, id]).catch(() => {});
     broadcastRealTimeEvent('SUBJECT_DELETED', { id });
     res.json({ success: true, message: `Subject ${id} deleted from database.` });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// --- STAFF SUBJECT ASSIGNMENTS ENDPOINTS ---
+app.get('/api/staff-subject-assignments', async (req, res) => {
+  try {
+    const [rows] = await dbPool.query('SELECT * FROM staff_subject_assignments ORDER BY created_at DESC');
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/subjects/:subjectId/staff', async (req, res) => {
+  const { subjectId } = req.params;
+  try {
+    const [rows] = await dbPool.query(
+      'SELECT * FROM staff_subject_assignments WHERE subjectId = ? OR subjectCode = ?',
+      [subjectId, subjectId]
+    );
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/subjects/:subjectId/staff', async (req, res) => {
+  const { subjectId } = req.params;
+  const { teacherId, teacherName, subjectCode, subjectName, courseId, courseName, department } = req.body;
+  const id = `ssa-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
+  try {
+    await dbPool.query(`
+      INSERT INTO staff_subject_assignments (id, teacherId, teacherName, subjectId, subjectCode, subjectName, courseId, courseName, department)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON DUPLICATE KEY UPDATE teacherName = VALUES(teacherName)
+    `, [
+      id, teacherId, teacherName, subjectId, subjectCode || subjectId, subjectName || '', courseId || '', courseName || '', department || ''
+    ]);
+
+    // Update main subject table for backward compatibility
+    await dbPool.query(`
+      UPDATE subjects SET assignedTeacherId = ?, assignedTeacherName = ? WHERE id = ? OR code = ?
+    `, [teacherId, teacherName, subjectId, subjectId]).catch(() => {});
+
+    broadcastRealTimeEvent('STAFF_ASSIGNED_TO_SUBJECT', { id, teacherId, subjectId });
+    res.json({ success: true, id, message: `Staff ${teacherName} assigned to subject.` });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.delete('/api/subjects/:subjectId/staff/:teacherId', async (req, res) => {
+  const { subjectId, teacherId } = req.params;
+  try {
+    await dbPool.query(
+      'DELETE FROM staff_subject_assignments WHERE (subjectId = ? OR subjectCode = ?) AND (teacherId = ?)',
+      [subjectId, subjectId, teacherId]
+    );
+    broadcastRealTimeEvent('STAFF_UNASSIGNED_FROM_SUBJECT', { subjectId, teacherId });
+    res.json({ success: true, message: 'Staff assignment removed.' });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.get('/api/teachers/:teacherId/assigned-classes', async (req, res) => {
+  const { teacherId } = req.params;
+  try {
+    const [fcaRows] = await dbPool.query(
+      'SELECT * FROM faculty_class_assignments WHERE teacherId = ? OR facultyId = ?',
+      [teacherId, teacherId]
+    );
+    const [ssaRows] = await dbPool.query(
+      'SELECT * FROM staff_subject_assignments WHERE teacherId = ?',
+      [teacherId]
+    );
+    res.json({ facultyClassAssignments: fcaRows, staffSubjectAssignments: ssaRows });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 });
 
@@ -1216,7 +1327,7 @@ app.get('/api/departments/:id/courses', async (req, res) => {
     const deptCode = dept ? dept.code : id;
     const deptName = dept ? dept.name : id;
     const [rows] = await dbPool.query(
-      'SELECT * FROM courses WHERE departmentCode = ? OR department = ? OR department = ? ORDER BY code ASC',
+      'SELECT * FROM subjects WHERE departmentCode = ? OR department = ? OR department = ? ORDER BY code ASC',
       [deptCode, deptName, id]
     );
     res.json(rows);
@@ -1262,7 +1373,25 @@ app.put('/api/departments/:id', async (req, res) => {
 
 app.delete('/api/departments/:id', async (req, res) => {
   const { id } = req.params;
+  const { force } = req.query;
   try {
+    const [[dept]] = await dbPool.query('SELECT * FROM departments WHERE id = ? OR code = ? OR name = ?', [id, id, id]);
+    if (force !== 'true' && dept) {
+      const [subjectRows] = await dbPool.query(
+        'SELECT COUNT(*) as count FROM subjects WHERE departmentCode = ? OR department = ?',
+        [dept.code, dept.name]
+      );
+      const subjectCount = subjectRows[0]?.count || 0;
+      if (subjectCount > 0) {
+        return res.status(400).json({
+          success: false,
+          error: `Cannot delete department "${dept.name}" because it contains ${subjectCount} subject(s). Delete or reassign subjects first, or confirm forced deletion.`,
+          hasChildren: true,
+          subjectCount
+        });
+      }
+    }
+
     await dbPool.query('DELETE FROM departments WHERE id = ? OR code = ?', [id, id]);
     broadcastRealTimeEvent('DEPARTMENT_DELETED', { id });
     res.json({ success: true, message: `Department ${id} deleted from database.` });
@@ -1582,6 +1711,30 @@ app.put('/api/attendance/:id', async (req, res) => {
     await dbPool.query('UPDATE attendance_logs SET status = ? WHERE id = ?', [status, id]);
     broadcastRealTimeEvent('ATTENDANCE_CORRECTED', { id, status });
     res.json({ success: true, message: `Attendance ${id} status updated to ${status}` });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.post('/api/attendance/batch', async (req, res) => {
+  const { records = [], markedBy = 'Staff Portal' } = req.body;
+  try {
+    let count = 0;
+    for (const rec of records) {
+      const id = `att-${rec.studentId}-${rec.subjectCode || 'GEN'}-${rec.date || new Date().toISOString().split('T')[0]}`;
+      await dbPool.query(`
+        INSERT INTO attendance_logs (id, studentId, studentName, subjectCode, subjectName, date, period, status, markedBy)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON DUPLICATE KEY UPDATE status = VALUES(status), markedBy = VALUES(markedBy)
+      `, [
+        id, rec.studentId, rec.studentName || 'Student', rec.subjectCode || 'SUB',
+        rec.subjectName || 'Subject', rec.date || new Date().toISOString().split('T')[0],
+        rec.period || 'P1', rec.status || 'Present', markedBy
+      ]);
+      count++;
+    }
+    broadcastRealTimeEvent('ATTENDANCE_BATCH_SUBMITTED', { count, markedBy });
+    res.json({ success: true, count, message: `Batch submitted ${count} attendance logs.` });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }

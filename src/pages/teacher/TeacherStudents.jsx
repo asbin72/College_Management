@@ -8,7 +8,7 @@ import { Filter, CheckCircle2, MessageSquare, Send } from 'lucide-react';
 
 export const TeacherStudents = () => {
   const { currentUser } = useAuth();
-  const { users, facultyClassAssignments, helpdesk, replyHelpdeskTicket } = useData();
+  const { users, facultyClassAssignments, helpdesk, replyHelpdeskTicket, activeStaffClassId, staffSubjectAssignments = [] } = useData();
 
   const [mobileOpen, setMobileOpen] = useState(false);
   const [activeTab, setActiveTab] = useState('directory');
@@ -42,8 +42,17 @@ export const TeacherStudents = () => {
   );
 
   const activeAssignments = myFacultyAssignments.length > 0 ? myFacultyAssignments : (facultyClassAssignments || []).slice(0, 3);
-  const myDeptCodes = [...new Set(activeAssignments.map(a => a.departmentCode))];
-  const myYears = [...new Set(activeAssignments.map(a => a.year))];
+  
+  // Filter active assignments by activeStaffClassId if selected
+  const scopedAssignments = activeAssignments.filter(a => {
+    if (!activeStaffClassId || activeStaffClassId === 'ALL') return true;
+    const key = a.classId || `${a.subjectCode || a.courseId || 'CLS'}-${a.year || a.semester}`;
+    return key === activeStaffClassId || a.subjectCode === activeStaffClassId || a.classId === activeStaffClassId;
+  });
+
+  const targetAssignments = scopedAssignments.length > 0 ? scopedAssignments : activeAssignments;
+  const myDeptCodes = [...new Set(targetAssignments.map(a => a.departmentCode))];
+  const myYears = [...new Set(targetAssignments.map(a => a.year))];
 
   // Dynamically resolve students enrolled in the teacher's classes
   const assignedStudents = (users || []).filter(u => 
