@@ -29,13 +29,13 @@ export const INITIAL_USERS = [
 ];
 
 export const INITIAL_DEPARTMENTS = [
-  { id: 'dept-1', name: 'Computer Science & Engineering', code: 'CSE', hod: 'Unassigned', totalFaculty: 0, totalStudents: 0, status: 'Active' },
-  { id: 'dept-2', name: 'Information Science & Engineering', code: 'ISE', hod: 'Unassigned', totalFaculty: 0, totalStudents: 0, status: 'Active' },
-  { id: 'dept-3', name: 'Electronics & Communication Engineering', code: 'ECE', hod: 'Unassigned', totalFaculty: 0, totalStudents: 0, status: 'Active' },
-  { id: 'dept-4', name: 'Electrical & Electronics Engineering', code: 'EEE', hod: 'Unassigned', totalFaculty: 0, totalStudents: 0, status: 'Active' },
-  { id: 'dept-5', name: 'Mechanical Engineering', code: 'ME', hod: 'Unassigned', totalFaculty: 0, totalStudents: 0, status: 'Active' },
-  { id: 'dept-6', name: 'Civil & Environmental Engineering', code: 'CE', hod: 'Unassigned', totalFaculty: 0, totalStudents: 0, status: 'Active' },
-  { id: 'dept-7', name: 'Management Studies', code: 'MBA', hod: 'Unassigned', totalFaculty: 0, totalStudents: 0, status: 'Active' }
+  { id: 'dept-1', name: 'Computer Science & Engineering', code: 'CSE', hod: 'Dr. Rajesh Sharma', email: 'hod.cse@kalpanaaa.edu', phone: '+91 98765 43210', totalFaculty: 24, totalStudents: 480, status: 'Active', description: 'Pioneering research in Artificial Intelligence, Neural Networks, Cyber Security, and Cloud Architecture.' },
+  { id: 'dept-2', name: 'Information Science & Engineering', code: 'ISE', hod: 'Prof. Sunita Reddy', email: 'hod.ise@kalpanaaa.edu', phone: '+91 98765 43211', totalFaculty: 18, totalStudents: 360, status: 'Active', description: 'Specialized in Cloud Infrastructure, DevOps Engineering, Big Data Analytics, and Web Systems.' },
+  { id: 'dept-3', name: 'Electronics & Communication Engineering', code: 'ECE', hod: 'Dr. Suresh Kumar', email: 'hod.ece@kalpanaaa.edu', phone: '+91 98765 43212', totalFaculty: 20, totalStudents: 360, status: 'Active', description: 'Advanced research in VLSI microchip design, 5G RF wireless communications, and Embedded IoT systems.' },
+  { id: 'dept-4', name: 'Electrical & Electronics Engineering', code: 'EEE', hod: 'Prof. Ramesh Rao', email: 'hod.eee@kalpanaaa.edu', phone: '+91 98765 43213', totalFaculty: 16, totalStudents: 240, status: 'Active', description: 'Smart grid technologies, renewable solar/wind energy integration, power electronics, and EV motor drives.' },
+  { id: 'dept-5', name: 'Mechanical Engineering', code: 'ME', hod: 'Dr. Vikramaditya Singh', email: 'hod.me@kalpanaaa.edu', phone: '+91 98765 43214', totalFaculty: 18, totalStudents: 240, status: 'Active', description: 'Robotics and industrial automation, additive manufacturing, CAD/CAM prototyping, and thermal systems.' },
+  { id: 'dept-6', name: 'Civil & Environmental Engineering', code: 'CE', hod: 'Dr. Meenakshi Sundaram', email: 'hod.ce@kalpanaaa.edu', phone: '+91 98765 43215', totalFaculty: 16, totalStudents: 240, status: 'Active', description: 'Sustainable smart city infrastructure, structural BIM analysis, seismic engineering, and environmental stewardship.' },
+  { id: 'dept-7', name: 'Management Studies', code: 'MBA', hod: 'Dr. Brijesh Malhotra', email: 'hod.mba@kalpanaaa.edu', phone: '+91 98765 43216', totalFaculty: 14, totalStudents: 180, status: 'Active', description: 'Excellence in Strategic Management, Corporate Finance, Business Analytics, and Global Leadership.' }
 ];
 
 export const INITIAL_STUDENTS = [];

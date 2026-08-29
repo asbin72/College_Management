@@ -512,19 +512,19 @@ export async function initializeDatabase() {
     if (dptCount[0].count === 0) {
       console.log('🏛️ Seeding institutional departments into MySQL...');
       const depts = [
-        { id: 'dept-1', name: 'Computer Science & Engineering', code: 'CSE', hod: 'Unassigned', description: 'Department of Computer Science & Engineering', status: 'Active' },
-        { id: 'dept-2', name: 'Information Science & Engineering', code: 'ISE', hod: 'Unassigned', description: 'Department of Information Science & Engineering', status: 'Active' },
-        { id: 'dept-3', name: 'Electronics & Communication Engineering', code: 'ECE', hod: 'Unassigned', description: 'Department of Electronics & Communication Engineering', status: 'Active' },
-        { id: 'dept-4', name: 'Electrical & Electronics Engineering', code: 'EEE', hod: 'Unassigned', description: 'Department of Electrical & Electronics Engineering', status: 'Active' },
-        { id: 'dept-5', name: 'Mechanical Engineering', code: 'ME', hod: 'Unassigned', description: 'Department of Mechanical Engineering', status: 'Active' },
-        { id: 'dept-6', name: 'Civil & Environmental Engineering', code: 'CE', hod: 'Unassigned', description: 'Department of Civil & Environmental Engineering', status: 'Active' },
-        { id: 'dept-7', name: 'Management Studies', code: 'MBA', hod: 'Unassigned', description: 'Department of Management Studies', status: 'Active' }
+        { id: 'dept-1', name: 'Computer Science & Engineering', code: 'CSE', hod: 'Dr. Rajesh Sharma', description: 'Department of Computer Science & Engineering', status: 'Active' },
+        { id: 'dept-2', name: 'Information Science & Engineering', code: 'ISE', hod: 'Prof. Sunita Reddy', description: 'Department of Information Science & Engineering', status: 'Active' },
+        { id: 'dept-3', name: 'Electronics & Communication Engineering', code: 'ECE', hod: 'Dr. Suresh Kumar', description: 'Department of Electronics & Communication Engineering', status: 'Active' },
+        { id: 'dept-4', name: 'Electrical & Electronics Engineering', code: 'EEE', hod: 'Prof. Ramesh Rao', description: 'Department of Electrical & Electronics Engineering', status: 'Active' },
+        { id: 'dept-5', name: 'Mechanical Engineering', code: 'ME', hod: 'Dr. Vikramaditya Singh', description: 'Department of Mechanical Engineering', status: 'Active' },
+        { id: 'dept-6', name: 'Civil & Environmental Engineering', code: 'CE', hod: 'Dr. Meenakshi Sundaram', description: 'Department of Civil & Environmental Engineering', status: 'Active' },
+        { id: 'dept-7', name: 'Management Studies', code: 'MBA', hod: 'Dr. Brijesh Malhotra', description: 'Department of Management Studies', status: 'Active' }
       ];
       for (const d of depts) {
         await connection.query(`
           INSERT INTO departments (id, name, code, hod, description, status)
           VALUES (?, ?, ?, ?, ?, ?)
-          ON DUPLICATE KEY UPDATE name = VALUES(name)
+          ON DUPLICATE KEY UPDATE name = VALUES(name), hod = VALUES(hod)
         `, [d.id, d.name, d.code, d.hod, d.description, d.status]);
       }
     }
