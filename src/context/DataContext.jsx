@@ -46,12 +46,12 @@ export const DataProvider = ({ children }) => {
   // -------------------------------------------------------------
   // STATE INITIALIZATION WITH DETERMINISTIC REAL DATA
   // -------------------------------------------------------------
-  const [users, setUsers] = useState(() => safeLoadStorage('kalpanaaa_data_users_v5', INITIAL_USERS));
+  const [users, setUsers] = useState(() => safeLoadStorage('kalpanaaa_data_users_v6', INITIAL_USERS));
   
-  const [departments, setDepartments] = useState(() => safeLoadStorage('kalpanaaa_data_departments_v5', INITIAL_DEPARTMENTS));
+  const [departments, setDepartments] = useState(() => safeLoadStorage('kalpanaaa_data_departments_v6', INITIAL_DEPARTMENTS));
 
   const [subjects, setSubjects] = useState(() => {
-    const cached = safeLoadStorage('kalpanaaa_data_subjects_v5', null);
+    const cached = safeLoadStorage('kalpanaaa_data_subjects_v6', null);
     if (cached && Array.isArray(cached) && cached.length >= INITIAL_SUBJECTS.length) return cached;
     return INITIAL_SUBJECTS;
   });
@@ -59,13 +59,13 @@ export const DataProvider = ({ children }) => {
   const courses = subjects;
 
   const [subjectOfferings, setSubjectOfferings] = useState(() => {
-    const cached = safeLoadStorage('kalpanaaa_data_subject_offerings_v5', null);
+    const cached = safeLoadStorage('kalpanaaa_data_subject_offerings_v6', null);
     if (cached && Array.isArray(cached) && cached.length >= INITIAL_SUBJECTS.length) return cached;
     return generateSubjectOfferings();
   });
 
   const [facultyClassAssignments, setFacultyClassAssignments] = useState(() => {
-    const cached = safeLoadStorage('kalpanaaa_data_faculty_assignments_v5', null);
+    const cached = safeLoadStorage('kalpanaaa_data_faculty_assignments_v6', null);
     if (Array.isArray(cached) && cached.length > 0) return cached;
     return generateFacultyAndAssignments().assignments;
   });
@@ -189,27 +189,27 @@ export const DataProvider = ({ children }) => {
   // COMPLETE LOCAL STORAGE PERSISTENCE SYNC (EVERY STATE CHANGE)
   // -------------------------------------------------------------
   useEffect(() => {
-    try { localStorage.setItem('kalpanaaa_data_users_v5', JSON.stringify(users)); } catch (e) {}
+    try { localStorage.setItem('kalpanaaa_data_users_v6', JSON.stringify(users)); } catch (e) {}
   }, [users]);
 
   useEffect(() => {
-    try { localStorage.setItem('kalpanaaa_data_departments_v5', JSON.stringify(departments)); } catch (e) {}
+    try { localStorage.setItem('kalpanaaa_data_departments_v6', JSON.stringify(departments)); } catch (e) {}
   }, [departments]);
 
   useEffect(() => {
-    try { localStorage.setItem('kalpanaaa_data_courses_v5', JSON.stringify(courses)); } catch (e) {}
+    try { localStorage.setItem('kalpanaaa_data_courses_v6', JSON.stringify(courses)); } catch (e) {}
   }, [courses]);
 
   useEffect(() => {
-    try { localStorage.setItem('kalpanaaa_data_subjects_v5', JSON.stringify(subjects)); } catch (e) {}
+    try { localStorage.setItem('kalpanaaa_data_subjects_v6', JSON.stringify(subjects)); } catch (e) {}
   }, [subjects]);
 
   useEffect(() => {
-    try { localStorage.setItem('kalpanaaa_data_subject_offerings_v5', JSON.stringify(subjectOfferings)); } catch (e) {}
+    try { localStorage.setItem('kalpanaaa_data_subject_offerings_v6', JSON.stringify(subjectOfferings)); } catch (e) {}
   }, [subjectOfferings]);
 
   useEffect(() => {
-    try { localStorage.setItem('kalpanaaa_data_faculty_assignments_v5', JSON.stringify(facultyClassAssignments)); } catch (e) {}
+    try { localStorage.setItem('kalpanaaa_data_faculty_assignments_v6', JSON.stringify(facultyClassAssignments)); } catch (e) {}
   }, [facultyClassAssignments]);
 
   useEffect(() => {
