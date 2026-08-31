@@ -6,7 +6,7 @@ import { Link } from 'react-router-dom';
 import { BookOpen, Users, Calendar, ArrowRight } from 'lucide-react';
 
 export const Academics = () => {
-  const { departments, courses } = useData();
+  const { departments = [], courses = [], users = [] } = useData();
 
   return (
     <div className="bg-slate-50 min-h-screen">
@@ -54,11 +54,11 @@ export const Academics = () => {
                   <div className="grid grid-cols-2 gap-4 py-3 bg-slate-50 rounded-xl p-4 mb-6 border border-slate-100 text-xs text-slate-700">
                     <div className="flex items-center">
                       <Users className="w-4 h-4 text-gold mr-2" />
-                      <span><strong className="font-num">{dept.totalFaculty}</strong> Faculty Members</span>
+                      <span><strong className="font-num">{users.filter(u => u && (u.role === 'TEACHER' || u.role === 'STAFF') && (u.departmentCode === dept.code || u.department === dept.name)).length}</strong> Faculty Members</span>
                     </div>
                     <div className="flex items-center">
                       <BookOpen className="w-4 h-4 text-gold mr-2" />
-                      <span><strong className="font-num">{dept.totalStudents}</strong> Enrolled Students</span>
+                      <span><strong className="font-num">{users.filter(u => u && (u.role === 'STUDENT' || u.studentId) && (u.departmentCode === dept.code || u.department === dept.name)).length}</strong> Enrolled Students</span>
                     </div>
                   </div>
                 </div>

@@ -40,21 +40,27 @@ export const TeacherSubjects = () => {
 
   myAssignments.forEach(fca => {
     const subObj = subjects.find(s => s.code === fca.subjectCode) || {};
-    const cohortStudents = users.filter(u =>
-      u.role === 'STUDENT' &&
-      (u.departmentCode === fca.departmentCode || u.department === fca.departmentName || (u.department && u.department.includes(fca.departmentCode))) &&
-      (u.year === fca.year || u.semester === fca.semester)
-    );
-    const count = cohortStudents.length > 0 ? cohortStudents.length : 10;
-    const existingMaterials = subObj.materials || ["Lecture_Notes_Unit1.pdf", "Syllabus_Overview.pdf"];
+    const getSemNum = (s) => (s || '').toString().replace(/\D/g, '');
+    const fcaSemNum = getSemNum(fca.semester);
+
+    const cohortStudents = users.filter(u => {
+      if (u.role !== 'STUDENT' && !u.studentId) return false;
+      const deptMatch = (u.departmentCode === fca.departmentCode || u.department === fca.departmentName || (u.department && fca.departmentCode && u.department.includes(fca.departmentCode)));
+      const stuSemNum = getSemNum(u.semester);
+      const semMatch = !fcaSemNum || !stuSemNum ? true : fcaSemNum === stuSemNum;
+      return deptMatch && semMatch;
+    });
+
+    const count = cohortStudents.length;
+    const existingMaterials = subObj.materials || [];
 
     combinedSubjectsMap.set(fca.subjectCode, {
       code: fca.subjectCode,
       name: fca.subjectName,
       department: fca.departmentName || teacherDept,
       departmentCode: fca.departmentCode,
-      semester: fca.semester || '6th Semester',
-      year: fca.year || '3rd Year',
+      semester: fca.semester || '',
+      year: fca.year || '',
       section: fca.section || 'Sec A',
       credits: subObj.credits || 4,
       studentsCount: count,
@@ -64,21 +70,27 @@ export const TeacherSubjects = () => {
 
   assignedSubsFromMaster.forEach(s => {
     if (!combinedSubjectsMap.has(s.code)) {
-      const cohortStudents = users.filter(u =>
-        u.role === 'STUDENT' &&
-        (u.department === s.department || u.departmentCode === s.departmentCode || (s.code && u.departmentCode && s.code.startsWith(u.departmentCode))) &&
-        (u.semester === s.semester || u.year === s.year)
-      );
-      const count = cohortStudents.length > 0 ? cohortStudents.length : 10;
-      const existingMaterials = s.materials || ["Lecture_Notes_Unit1.pdf"];
+      const getSemNum = (sem) => (sem || '').toString().replace(/\D/g, '');
+      const sSemNum = getSemNum(s.semester);
+
+      const cohortStudents = users.filter(u => {
+        if (u.role !== 'STUDENT' && !u.studentId) return false;
+        const deptMatch = (u.department === s.department || u.departmentCode === s.departmentCode || (s.code && u.departmentCode && s.code.startsWith(u.departmentCode)));
+        const stuSemNum = getSemNum(u.semester);
+        const semMatch = !sSemNum || !stuSemNum ? true : sSemNum === stuSemNum;
+        return deptMatch && semMatch;
+      });
+
+      const count = cohortStudents.length;
+      const existingMaterials = s.materials || [];
 
       combinedSubjectsMap.set(s.code, {
         code: s.code,
         name: s.name,
         department: s.department || teacherDept,
         departmentCode: s.departmentCode,
-        semester: s.semester || '6th Semester',
-        year: s.year || '3rd Year',
+        semester: s.semester || '',
+        year: s.year || '',
         section: 'Sec A',
         credits: s.credits || 4,
         studentsCount: count,
@@ -87,7 +99,7 @@ export const TeacherSubjects = () => {
     }
   });
 
-  // If no assignments found for new user, fall back to teacher's department subjects
+  // If no assignments found for teacher, show clean empty state
   if (combinedSubjectsMap.size === 0) {
     const deptSubs = subjects.filter(s =>
       s.department === teacherDept ||
@@ -100,12 +112,12 @@ export const TeacherSubjects = () => {
         name: s.name,
         department: s.department || teacherDept,
         departmentCode: s.departmentCode,
-        semester: s.semester || '6th Semester',
-        year: s.year || '3rd Year',
+        semester: s.semester || '',
+        year: s.year || '',
         section: 'Sec A',
         credits: s.credits || 4,
-        studentsCount: 10,
-        materials: s.materials || ["Lecture_Notes_Unit1.pdf"]
+        studentsCount: 0,
+        materials: s.materials || []
       });
     });
   }

@@ -43,8 +43,7 @@ export const TeacherDashboard = () => {
     fca => fca.facultyId === teacherId || fca.facultyName === teacherName
   );
 
-  // Fallback to demo CSE classes if teacherId hasn't been set
-  const activeAssignments = myAssignments.length > 0 ? myAssignments : facultyClassAssignments.slice(0, 3);
+  const activeAssignments = myAssignments;
 
   // ── Dynamic: total students across all assigned classes ───────────────────
   const totalStudentsCount = activeAssignments.reduce((acc, curr) => acc + getEnrolledStudentCount(curr, users), 0);

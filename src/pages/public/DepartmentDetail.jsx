@@ -6,7 +6,7 @@ import { CheckCircle2, Phone, Mail, Building, Award, Users, BookOpen } from 'luc
 
 export const DepartmentDetail = () => {
   const { deptId, department: legacyDept } = useParams();
-  const { departments = [] } = useData();
+  const { departments = [], users = [] } = useData();
 
   const searchParam = (deptId || legacyDept || '').toLowerCase();
   const dept = departments.find(d => 
@@ -20,10 +20,11 @@ export const DepartmentDetail = () => {
     hod: 'Dr. Rajesh Sharma',
     description: 'Pioneering research in Artificial Intelligence, Neural Networks, Cyber Security, and Cloud Architecture.',
     email: 'hod.cse@kalpanaaa.edu',
-    phone: '+91 98765 43210',
-    totalFaculty: 24,
-    totalStudents: 480
+    phone: '+91 98765 43210'
   };
+
+  const facultyCount = users.filter(u => u && (u.role === 'TEACHER' || u.role === 'STAFF') && (u.departmentCode === dept.code || u.department === dept.name)).length;
+  const studentCount = users.filter(u => u && (u.role === 'STUDENT' || u.studentId) && (u.departmentCode === dept.code || u.department === dept.name)).length;
 
   const programs = dept.programsOffered || [
     dept.name.includes('Management') ? 'Master of Business Administration (MBA)' : `B.Tech in ${dept.name}`,
@@ -73,11 +74,11 @@ export const DepartmentDetail = () => {
               <div className="grid grid-cols-2 gap-4 py-3 bg-slate-50 rounded-xl p-4 mb-6 border border-slate-100 text-xs text-slate-700 font-sans">
                 <div className="flex items-center">
                   <Users className="w-5 h-5 text-gold mr-2" />
-                  <span><strong className="font-num text-navy text-sm font-bold">{dept.totalFaculty || 20}</strong> Faculty Members</span>
+                  <span><strong className="font-num text-navy text-sm font-bold">{facultyCount}</strong> Faculty Members</span>
                 </div>
                 <div className="flex items-center">
                   <BookOpen className="w-5 h-5 text-gold mr-2" />
-                  <span><strong className="font-num text-navy text-sm font-bold">{dept.totalStudents || 360}</strong> Enrolled Students</span>
+                  <span><strong className="font-num text-navy text-sm font-bold">{studentCount}</strong> Enrolled Students</span>
                 </div>
               </div>
 
