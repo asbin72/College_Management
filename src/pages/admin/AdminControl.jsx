@@ -30,9 +30,9 @@ export const AdminControl = () => {
   const activeStudents = students.filter(u => u && u.status !== 'Inactive' && u.status !== 'Suspended');
   const teachers = (users || []).filter(u => u && (u.role === 'TEACHER' || u.role === 'STAFF' || u.role === 'FACULTY' || (u.employeeId && String(u.employeeId).startsWith('EMP'))));
   const pendingLeaves = (leaveRequests || []).filter(l => l && l.status === 'Pending');
-  const upcomingExams = (examinations || []).filter(e => e && !e.isPublished && e.status !== 'Results Published');
-  const pendingExamTasks = (examinations || []).filter(e => e && (e.status === 'Marks Pending' || e.status === 'Marks Submitted'));
-  const publishedExamsCount = (examinations || []).filter(e => e && (e.isPublished || e.status === 'Results Published' || e.published)).length;
+  const scheduledExamsCount = (examinations || []).filter(e => e && (e.status === 'Scheduled' || e.status === 'Upcoming' || !e.status || e.status === 'Active')).length;
+  const marksPendingExamsCount = (examinations || []).filter(e => e && (e.status === 'Marks Pending' || e.status === 'Marks Submitted' || e.status === 'Evaluating')).length;
+  const publishedExamsCount = (examinations || []).filter(e => e && (e.isPublished || e.status === 'Results Published' || e.status === 'Published' || e.published)).length;
   const totalSubjectsCount = (subjectOfferings && subjectOfferings.length > 0) ? subjectOfferings.length : (subjects ? subjects.length : 0);
 
   const todayStr = new Date().toISOString().split('T')[0];
@@ -47,6 +47,11 @@ export const AdminControl = () => {
 
   const presentTodayCount = sessionAttendance.filter(a => a && a.status === 'Present').length;
   const absentTodayCount = sessionAttendance.filter(a => a && a.status === 'Absent').length;
+
+  const totalTargetCount = sessionAttendance.length > 0
+    ? sessionAttendance.length
+    : (activeStudents.length || students.length || (presentTodayCount + absentTodayCount));
+
   const cohortCount = (facultyClassAssignments && facultyClassAssignments.length > 0)
     ? facultyClassAssignments.length
     : (subjectOfferings && subjectOfferings.length > 0)
@@ -246,9 +251,9 @@ export const AdminControl = () => {
                 <Building className="w-5 h-5 text-emerald-600 group-hover:text-gold mb-1.5" />
                 <span className="text-xs font-bold">Add Department</span>
               </button>
-              <button onClick={() => openModal('course')} className="p-3.5 bg-amber-50 hover:bg-navy hover:text-white text-navy rounded-xl border border-amber-100 transition flex flex-col items-center text-center group shadow-xs">
+              <button onClick={() => openModal('subject')} className="p-3.5 bg-amber-50 hover:bg-navy hover:text-white text-navy rounded-xl border border-amber-100 transition flex flex-col items-center text-center group shadow-xs">
                 <BookOpen className="w-5 h-5 text-amber-600 group-hover:text-gold mb-1.5" />
-                <span className="text-xs font-bold">Add Course</span>
+                <span className="text-xs font-bold">Add Subject</span>
               </button>
               <button onClick={() => navigate('/admin/exams')} className="p-3.5 bg-rose-50 hover:bg-navy hover:text-white text-navy rounded-xl border border-rose-100 transition flex flex-col items-center text-center group shadow-xs">
                 <Award className="w-5 h-5 text-rose-600 group-hover:text-gold mb-1.5" />
@@ -313,11 +318,11 @@ export const AdminControl = () => {
                   </h4>
                   <Link to="/admin/attendance" className="text-xs font-bold text-gold hover:underline">View Attendance &rarr;</Link>
                 </div>
-                <p className="text-xs text-slate-500 mb-4">Live session logs across {cohortCount} class cohorts ({todayStr}).</p>
+                <p className="text-xs text-slate-500 mb-4">Live session logs across {cohortCount} class cohort{cohortCount !== 1 ? 's' : ''} ({todayAttendanceLogs.length > 0 ? todayStr : (latestDateInLogs || todayStr)}).</p>
                 <div className="grid grid-cols-3 gap-3 text-center">
                   <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl">
                     <span className="text-[10px] font-bold text-slate-400 uppercase block">Total Target</span>
-                    <span className="text-xl font-bold text-navy font-num">{students.length}</span>
+                    <span className="text-xl font-bold text-navy font-num">{totalTargetCount}</span>
                   </div>
                   <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl">
                     <span className="text-[10px] font-bold text-emerald-700 uppercase block">Present Today</span>
@@ -374,13 +379,11 @@ export const AdminControl = () => {
                 <div className="grid grid-cols-3 gap-3 text-center">
                   <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl">
                     <span className="text-[10px] font-bold text-blue-700 uppercase block">Scheduled</span>
-                    <span className="text-xl font-bold text-navy font-num">{examinations.length}</span>
+                    <span className="text-xl font-bold text-navy font-num">{scheduledExamsCount}</span>
                   </div>
                   <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl">
                     <span className="text-[10px] font-bold text-amber-700 uppercase block">Marks Pending</span>
-                    <span className="text-xl font-bold text-amber-600 font-num">
-                      {examinations.filter(e => e.status === 'Marks Pending').length}
-                    </span>
+                    <span className="text-xl font-bold text-amber-600 font-num">{marksPendingExamsCount}</span>
                   </div>
                   <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl">
                     <span className="text-[10px] font-bold text-emerald-700 uppercase block">Published</span>

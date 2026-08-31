@@ -94,27 +94,23 @@ export const TeacherClassDetail = () => {
     u.role === 'STUDENT' || (u.studentId && String(u.studentId).startsWith('STU')) || u.rollNo || u.registerNumber
   );
 
-  const matchedCohortStudents = allDepartmentStudents.filter(u => 
-    (!currentClassAssignment.departmentCode && !currentClassAssignment.departmentName && !currentClassAssignment.department ? true :
+  const getSemNum = (s) => (s || '').toString().replace(/\D/g, '');
+  const fcaSemNum = getSemNum(currentClassAssignment.semester);
+
+  const matchedCohortStudents = allDepartmentStudents.filter(u => {
+    const deptMatch = !currentClassAssignment.departmentCode && !currentClassAssignment.departmentName && !currentClassAssignment.department ? true :
       (u.departmentCode && currentClassAssignment.departmentCode && String(u.departmentCode).toUpperCase() === String(currentClassAssignment.departmentCode).toUpperCase()) ||
       (u.department && currentClassAssignment.departmentName && String(u.department).toLowerCase() === String(currentClassAssignment.departmentName).toLowerCase()) ||
-      (u.department && currentClassAssignment.department && String(u.department).toLowerCase() === String(currentClassAssignment.department).toLowerCase())) &&
-    (!currentClassAssignment.year || !u.year || String(u.year).toLowerCase() === String(currentClassAssignment.year).toLowerCase()) &&
-    (!currentClassAssignment.semester || !u.semester || String(u.semester).toLowerCase() === String(currentClassAssignment.semester).toLowerCase())
-  );
+      (u.department && currentClassAssignment.department && String(u.department).toLowerCase() === String(currentClassAssignment.department).toLowerCase());
 
-  const enrolledStudents = matchedCohortStudents.length > 0 
-    ? matchedCohortStudents 
-    : (allDepartmentStudents.filter(u => 
-        (u.departmentCode && currentClassAssignment.departmentCode && String(u.departmentCode).toUpperCase() === String(currentClassAssignment.departmentCode).toUpperCase()) ||
-        (u.department && currentClassAssignment.departmentName && String(u.department).toLowerCase() === String(currentClassAssignment.departmentName).toLowerCase())
-      ).length > 0 
-        ? allDepartmentStudents.filter(u => 
-            (u.departmentCode && currentClassAssignment.departmentCode && String(u.departmentCode).toUpperCase() === String(currentClassAssignment.departmentCode).toUpperCase()) ||
-            (u.department && currentClassAssignment.departmentName && String(u.department).toLowerCase() === String(currentClassAssignment.departmentName).toLowerCase())
-          )
-        : allDepartmentStudents
-      );
+    const yearMatch = !currentClassAssignment.year || !u.year || String(u.year).toLowerCase() === String(currentClassAssignment.year).toLowerCase();
+    const stuSemNum = getSemNum(u.semester);
+    const semMatch = !fcaSemNum || !stuSemNum ? true : fcaSemNum === stuSemNum;
+
+    return deptMatch && yearMatch && semMatch;
+  });
+
+  const enrolledStudents = matchedCohortStudents;
 
   // Subject Offering Info
   const subjectInfo = subjectOfferings.find(s => s.subjectCode === currentClassAssignment.subjectCode) || {

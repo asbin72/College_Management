@@ -32,9 +32,17 @@ export const TeacherAttendance = () => {
 
   const currentSubjectObj = subjects.find(s => s.code === selectedSubjectCode) || activeSubject;
 
-  // Filter students strictly belonging to the assigned subject's department/course cohort
+  // Filter students strictly belonging to the assigned subject's department/course cohort AND semester
+  const getSemNum = (s) => (s || '').toString().replace(/\D/g, '');
+  const targetSubSemNum = getSemNum(currentSubjectObj.semester);
+
   const classStudents = users.filter(u => {
     if (u.role !== 'STUDENT' && !String(u.studentId || '').startsWith('STU')) return false;
+
+    const stuSemNum = getSemNum(u.semester);
+    if (targetSubSemNum && stuSemNum && targetSubSemNum !== stuSemNum) {
+      return false;
+    }
 
     // Direct match if available
     if (currentSubjectObj.department && u.department === currentSubjectObj.department) return true;

@@ -442,7 +442,19 @@ export const AdminCoursesHierarchy = () => {
                         ) : (
                           deptSubjects.map((sub) => {
                             const assignedStaffList = getAssignedStaffForSubject(sub);
-                            const enrolledStudentCount = getStudentsCountForCourse(sub.name) || getStudentsCountForCourse(sub.code) || getStudentsCountForCourse(dept.code);
+                            const getSemNum = (s) => (s || '').toString().replace(/\D/g, '');
+                            const subSemNum = getSemNum(sub.semester);
+                            const enrolledStudentCount = users.filter(u => {
+                              if (!u || (u.role !== 'STUDENT' && !u.studentId && !u.rollNo)) return false;
+                              const deptMatch = 
+                                (u.departmentCode && dept.code && u.departmentCode.toUpperCase() === dept.code.toUpperCase()) ||
+                                (u.department && dept.name && u.department.toLowerCase() === dept.name.toLowerCase()) ||
+                                (u.department && dept.code && u.department.toLowerCase().includes(dept.code.toLowerCase())) ||
+                                (!u.departmentCode && !u.department);
+                              const stSemNum = getSemNum(u.semester);
+                              const semMatch = !subSemNum || !stSemNum || subSemNum === stSemNum;
+                              return deptMatch && semMatch;
+                            }).length;
 
                             return (
                               <div key={sub.id || sub.code} className="p-4 bg-white hover:bg-slate-50/80 rounded-xl border border-slate-200 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-3 transition-all">

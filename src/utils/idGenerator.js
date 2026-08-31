@@ -35,6 +35,8 @@ export const generateAppRef = () => {
 export function getEnrolledStudentCount(fca, users = []) {
   if (!fca || !Array.isArray(users)) return fca?.studentCount || 0;
 
+  const getSemNum = (s) => (s || '').toString().replace(/\D/g, '');
+
   const students = users.filter(u => 
     u.role === 'STUDENT' || (u.studentId && String(u.studentId).startsWith('STU')) || u.rollNo || u.registerNumber
   );
@@ -46,22 +48,16 @@ export function getEnrolledStudentCount(fca, users = []) {
       (s.department && fca.department && String(s.department).toLowerCase() === String(fca.department).toLowerCase());
 
     const yearMatch = !fca.year || !s.year || String(s.year).toLowerCase() === String(fca.year).toLowerCase();
-    const semMatch = !fca.semester || !s.semester || String(s.semester).toLowerCase() === String(fca.semester).toLowerCase();
+
+    const fcaSemNum = getSemNum(fca.semester);
+    const stuSemNum = getSemNum(s.semester);
+
+    const semMatch = !fcaSemNum || !stuSemNum ? true : fcaSemNum === stuSemNum;
 
     return deptMatch && yearMatch && semMatch;
   });
 
-  if (matched.length > 0) return matched.length;
-
-  const deptMatched = students.filter(s =>
-    (s.departmentCode && fca.departmentCode && String(s.departmentCode).toUpperCase() === String(fca.departmentCode).toUpperCase()) ||
-    (s.department && fca.departmentName && String(s.department).toLowerCase() === String(fca.departmentName).toLowerCase()) ||
-    (s.department && fca.department && String(s.department).toLowerCase() === String(fca.department).toLowerCase())
-  );
-
-  if (deptMatched.length > 0) return deptMatched.length;
-
-  return students.length > 0 ? students.length : (fca.studentCount || 0);
+  return matched.length;
 }
 
 /**

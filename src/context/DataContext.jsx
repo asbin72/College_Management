@@ -887,16 +887,34 @@ export const DataProvider = ({ children }) => {
     logAction(actorUser, 'STAFF_UNASSIGNED_FROM_SUBJECT', `Removed staff ${teacherId} from subject ${subjectId}`);
   };
 
-  const getStudentsCountForCourse = (courseIdOrCodeOrName) => {
+  const getStudentsCountForCourse = (courseIdOrCodeOrName, targetSem = null) => {
     if (!courseIdOrCodeOrName) return 0;
     const term = String(courseIdOrCodeOrName).toLowerCase().trim();
+    const getSemNum = (s) => (s || '').toString().replace(/\D/g, '');
+    const targetSemNum = getSemNum(targetSem);
+
     const studentsList = users.filter(u => u && (u.role === 'STUDENT' || u.studentId));
     return studentsList.filter(st => {
       const cName = (st.course || '').toLowerCase().trim();
       const cId = (st.courseId || '').toLowerCase().trim();
       const cDeptCode = (st.departmentCode || '').toLowerCase().trim();
       const cDept = (st.department || '').toLowerCase().trim();
-      return cName.includes(term) || term.includes(cName) || cId === term || cDeptCode === term || cDept === term;
+      const stSemNum = getSemNum(st.semester);
+
+      const isSubMatch = (cName && (cName.includes(term) || term.includes(cName))) || cId === term;
+      const isDeptMatch = cDeptCode === term || cDept === term;
+
+      if (isSubMatch) {
+        if (targetSemNum && stSemNum) return targetSemNum === stSemNum;
+        return true;
+      }
+
+      if (isDeptMatch) {
+        if (targetSemNum && stSemNum) return targetSemNum === stSemNum;
+        return true;
+      }
+
+      return false;
     }).length;
   };
 

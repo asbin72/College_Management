@@ -495,17 +495,27 @@ export async function initializeDatabase() {
     console.log('🔌 Connected to MySQL server:', process.env.MYSQLDATABASE || 'kalpanaa_education_db');
     await createTablesIfNotExist(connection);
 
-    // Seed Default Admin if empty
-    const [admCount] = await connection.query('SELECT COUNT(*) as count FROM admins');
-    if (admCount[0].count === 0) {
-      console.log('🔑 Seeding default administrator account into MySQL...');
-      const adminPassHash = await bcrypt.hash('admin123', 10);
-      await connection.query(`
-        INSERT INTO admins (id, employeeId, name, email, password, designation)
-        VALUES (?, ?, ?, ?, ?, ?)
-        ON DUPLICATE KEY UPDATE name = VALUES(name)
-      `, ['user-admin', 'ADM-001', 'Administrator', 'admin@kalpanaaa.edu', adminPassHash, 'Super Administrator & Dean']);
-    }
+    // Seed/Ensure Default Admin, Teacher, Student demo accounts
+    const adminPassHash = await bcrypt.hash('admin123', 10);
+    await connection.query(`
+      INSERT INTO admins (id, employeeId, name, email, password, designation)
+      VALUES ('user-admin', 'ADM-001', 'Administrator', 'admin@kalpanaaa.edu', ?, 'Super Administrator & Dean')
+      ON DUPLICATE KEY UPDATE email = 'admin@kalpanaaa.edu', password = ?
+    `, [adminPassHash, adminPassHash]);
+
+    const teacherPassHash = await bcrypt.hash('teacher123', 10);
+    await connection.query(`
+      INSERT INTO teachers (id, employeeId, name, email, password, department, designation)
+      VALUES ('user-teacher-demo', 'EMP-100', 'Demo Teacher', 'teacher@kalpanaaa.edu', ?, 'Computer Science & Engineering', 'Senior Professor')
+      ON DUPLICATE KEY UPDATE email = 'teacher@kalpanaaa.edu', password = ?
+    `, [teacherPassHash, teacherPassHash]);
+
+    const studentPassHash = await bcrypt.hash('student123', 10);
+    await connection.query(`
+      INSERT INTO students (id, studentId, name, email, password, department, semester, section, status)
+      VALUES ('stu-demo-001', 'STU-001', 'Demo Student', 'student@kalpanaaa.edu', ?, 'Computer Science & Engineering', 'Semester 4', 'A', 'Active')
+      ON DUPLICATE KEY UPDATE email = 'student@kalpanaaa.edu', password = ?
+    `, [studentPassHash, studentPassHash]);
 
     // Seed Departments if empty
     const [dptCount] = await connection.query('SELECT COUNT(*) as count FROM departments');
