@@ -207,44 +207,6 @@ export const Login = () => {
                 {!loading && <LogIn className="w-4 h-4 ml-2" />}
               </button>
 
-              {/* Quick Demo Credentials (DEV Only) */}
-              {(import.meta.env.DEV || import.meta.env.VITE_ENABLE_DEMO_LOGIN === 'true') && (
-                <div className="pt-4 border-t border-slate-100 text-center font-sans">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-2">Quick Demo Portal Credentials</span>
-                  <div className="grid grid-cols-3 gap-1.5 text-[10px]">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setLoginEmail('admin@kalpanaaa.edu');
-                        setLoginPassword('admin123');
-                      }}
-                      className="p-1.5 bg-slate-100 hover:bg-navy hover:text-gold text-slate-700 font-bold rounded-lg transition border border-slate-200"
-                    >
-                      Admin
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setLoginEmail('teacher@kalpanaaa.edu');
-                        setLoginPassword('teacher123');
-                      }}
-                      className="p-1.5 bg-purple-50 hover:bg-purple-700 hover:text-white text-purple-700 font-bold rounded-lg transition border border-purple-200"
-                    >
-                      Teacher
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setLoginEmail('student@kalpanaaa.edu');
-                        setLoginPassword('student123');
-                      }}
-                      className="p-1.5 bg-blue-50 hover:bg-blue-700 hover:text-white text-blue-700 font-bold rounded-lg transition border border-blue-200"
-                    >
-                      Student
-                    </button>
-                  </div>
-                </div>
-              )}
             </form>
           ) : signupSuccess ? (
             <div className="text-center space-y-4 py-4 font-sans">

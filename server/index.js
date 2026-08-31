@@ -390,7 +390,7 @@ app.post('/api/auth/login', authRateLimiter, async (req, res) => {
     // 1. Check Admins
     const [admRows] = await dbPool.query(
       `SELECT * FROM admins 
-       WHERE (LOWER(email) = ? OR LOWER(email) = ? OR employeeId = ? OR id = ? OR LOWER(email) = 'admin@kalpanaaa.edu') 
+       WHERE (LOWER(email) = ? OR LOWER(email) = ? OR employeeId = ? OR id = ?) 
        LIMIT 1`,
       [normalizedId, altDomainId, cleanId, cleanId]
     );
@@ -398,7 +398,7 @@ app.post('/api/auth/login', authRateLimiter, async (req, res) => {
     if (admRows.length > 0) {
       const u = admRows[0];
       const isValid = await verifyAndMigratePassword(password, u.password, 'admins', u.id);
-      if (isValid || (password === 'admin123' && (normalizedId === 'admin@kalpanaaa.edu' || normalizedId === 'admin@kalpanaa.edu' || normalizedId === 'admin'))) {
+      if (isValid) {
         const token = jwt.sign(
           { id: u.id, name: u.name, email: u.email, role: 'ADMIN', employeeId: u.employeeId },
           JWT_SECRET,
@@ -416,16 +416,15 @@ app.post('/api/auth/login', authRateLimiter, async (req, res) => {
     // 2. Check Teachers (Staff)
     const [tchRows] = await dbPool.query(
       `SELECT * FROM teachers 
-       WHERE (LOWER(email) = ? OR LOWER(email) = ? OR employeeId = ? OR id = ? OR LOWER(email) = 'teacher@kalpanaaa.edu') 
-       ORDER BY (CASE WHEN LOWER(email) = ? OR LOWER(email) = 'teacher@kalpanaaa.edu' THEN 0 ELSE 1 END)
+       WHERE (LOWER(email) = ? OR LOWER(email) = ? OR employeeId = ? OR id = ?) 
        LIMIT 1`,
-      [normalizedId, altDomainId, cleanId, cleanId, normalizedId]
+      [normalizedId, altDomainId, cleanId, cleanId]
     );
 
     if (tchRows.length > 0) {
       const u = tchRows[0];
       const isValid = await verifyAndMigratePassword(password, u.password, 'teachers', u.id);
-      if (isValid || (password === 'teacher123' && (normalizedId === 'teacher@kalpanaaa.edu' || normalizedId === 'teacher@kalpanaa.edu' || normalizedId === 'teacher'))) {
+      if (isValid) {
         const token = jwt.sign(
           { id: u.id, name: u.name, email: u.email, role: 'TEACHER', employeeId: u.employeeId },
           JWT_SECRET,
@@ -443,16 +442,15 @@ app.post('/api/auth/login', authRateLimiter, async (req, res) => {
     // 3. Check Students
     const [stdRows] = await dbPool.query(
       `SELECT * FROM students 
-       WHERE (LOWER(email) = ? OR LOWER(email) = ? OR studentId = ? OR rollNo = ? OR registerNumber = ? OR id = ? OR LOWER(email) = 'student@kalpanaaa.edu') 
-       ORDER BY (CASE WHEN LOWER(email) = ? OR LOWER(email) = 'student@kalpanaaa.edu' THEN 0 ELSE 1 END)
+       WHERE (LOWER(email) = ? OR LOWER(email) = ? OR studentId = ? OR rollNo = ? OR registerNumber = ? OR id = ?) 
        LIMIT 1`,
-      [normalizedId, altDomainId, cleanId, cleanId, cleanId, cleanId, normalizedId]
+      [normalizedId, altDomainId, cleanId, cleanId, cleanId, cleanId]
     );
 
     if (stdRows.length > 0) {
       const u = stdRows[0];
       const isValid = await verifyAndMigratePassword(password, u.password, 'students', u.id);
-      if (isValid || (password === 'student123' && (normalizedId === 'student@kalpanaaa.edu' || normalizedId === 'student@kalpanaa.edu' || normalizedId === 'student'))) {
+      if (isValid) {
         const token = jwt.sign(
           { id: u.id, name: u.name, email: u.email, role: 'STUDENT', studentId: u.studentId },
           JWT_SECRET,
