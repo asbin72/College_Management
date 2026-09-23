@@ -24,27 +24,26 @@ if (!process.env.JWT_SECRET) {
 }
 const JWT_SECRET = process.env.JWT_SECRET;
 
-// Explicit CORS Allowlist with dynamic local and production domain support
-const rawFrontendUrls = process.env.FRONTEND_URL || 'http://localhost:3000,http://localhost:5173,http://127.0.0.1:3000,http://127.0.0.1:5173';
-const allowedOrigins = rawFrontendUrls.split(',').map(u => u.trim().replace(/\/$/, '')).filter(Boolean);
+// Universal Dynamic CORS Middleware (Supports all Vercel previews, custom domains, and localhost)
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (origin) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, x-test-secret, Cache-Control, Accept');
+  }
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(204);
+  }
+  next();
+});
 
 app.use(cors({
-  origin: (origin, callback) => {
-    // Allow non-browser requests (e.g. server-to-server, curl, integration tests) without origin header
-    if (!origin) return callback(null, true);
-    if (
-      allowedOrigins.includes('*') ||
-      allowedOrigins.includes(origin) ||
-      /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin) ||
-      /^https:\/\/.*\.vercel\.app$/.test(origin)
-    ) {
-      return callback(null, true);
-    }
-    return callback(new Error(`CORS policy violation: origin ${origin} is not allowed by explicit allowlist.`));
-  },
+  origin: true,
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'x-test-secret']
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'x-test-secret', 'Cache-Control', 'Accept']
 }));
 app.options('*', cors());
 app.use(express.json({ limit: '10mb' }));
