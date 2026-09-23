@@ -726,8 +726,8 @@ export async function initializeDatabase(customDatabaseName = null) {
       }
 
     // 6. Seed Demo Students & Cohort Scholars
-    const [stdCheck] = await connection.query('SELECT COUNT(*) as count FROM students');
-    if (stdCheck[0].count === 0) {
+    const [demoStdCheck] = await connection.query("SELECT COUNT(*) as count FROM students WHERE id = 'user-student-demo'");
+    if (demoStdCheck[0].count === 0) {
       console.log('🎓 Seeding institutional students and demo student accounts...');
       const studentPassHash = await bcrypt.hash('student123', 10);
       
