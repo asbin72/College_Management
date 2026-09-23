@@ -259,7 +259,7 @@ export const TeacherProfile = () => {
 
                   <div>
                     <label className="block text-slate-500 font-bold uppercase mb-1">Official Institutional Email</label>
-                    <input type="email" readOnly value={currentUser.email || 'teacher@kalpanaaa.edu'} className="w-full px-3 py-2 bg-slate-100 border border-slate-200 rounded-xl text-slate-700 font-semibold cursor-not-allowed" />
+                    <input type="email" readOnly value={currentUser.email || ''} className="w-full px-3 py-2 bg-slate-100 border border-slate-200 rounded-xl text-slate-700 font-semibold cursor-not-allowed" />
                   </div>
 
                   <div>

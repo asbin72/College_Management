@@ -12,7 +12,7 @@ export const TeacherClassDetail = () => {
   const navigate = useNavigate();
   const { currentUser } = useAuth();
   const {
-    users, facultyClassAssignments, subjectOfferings, attendance,
+    users = [], facultyClassAssignments = [], courses = [], subjects = [], subjectOfferings = [], attendance = [],
     markClassAttendance, updateClassMarks, addClassAssignment, addClassAnnouncement
   } = useData();
 
@@ -44,22 +44,31 @@ export const TeacherClassDetail = () => {
 
   if (!currentUser) return null;
 
-  const currentFacultyId = currentUser.employeeId || currentUser.username || currentUser.id || 'EMP-101';
+  const fEmp = (currentUser.employeeId || '').toLowerCase().trim();
+  const fId = (currentUser.id || '').toLowerCase().trim();
+  const fName = (currentUser.name || '').toLowerCase().trim();
   const isAdmin = currentUser.role === 'ADMIN';
 
   // Fetch all assignments belonging to logged-in faculty
-  const myFacultyAssignments = facultyClassAssignments.filter(
-    fca => fca.facultyId === currentFacultyId || isAdmin || true // Fallback so demo teacher views assigned classes
-  );
+  const myFacultyAssignments = (facultyClassAssignments || []).filter(fca => {
+    if (!fca) return false;
+    const tId = (fca.teacherId || fca.facultyId || '').toLowerCase().trim();
+    const tName = (fca.teacherName || fca.facultyName || '').toLowerCase().trim();
+    return (
+      isAdmin ||
+      (fEmp && (tId === fEmp || tId.includes(fEmp))) ||
+      (fId && (tId === fId || tId.includes(fId))) ||
+      (fName && (tName === fName || tName.includes(fName) || fName.includes(tName)))
+    );
+  });
 
   // Current active class assignment
-  const currentClassAssignment = facultyClassAssignments.find(fca => fca.classId === classId) || myFacultyAssignments[0];
+  const currentClassAssignment = (facultyClassAssignments || []).find(fca => fca.classId === classId) ||
+    myFacultyAssignments.find(fca => fca.classId === classId) ||
+    myFacultyAssignments[0];
 
   // STRICT PERMISSION & OWNERSHIP CHECK (Security Rule)
-  const hasAccess = isAdmin || (currentClassAssignment && (
-    currentClassAssignment.facultyId === currentFacultyId ||
-    currentUser.role === 'TEACHER' || currentUser.role === 'STAFF'
-  ));
+  const hasAccess = isAdmin || Boolean(currentClassAssignment) || currentUser.role === 'TEACHER' || currentUser.role === 'STAFF';
 
   if (!hasAccess || !currentClassAssignment) {
     return (

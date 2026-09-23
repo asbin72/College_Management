@@ -5,7 +5,16 @@ import { getCurrentYear } from '../../utils/idGenerator';
 import { PortalHeader } from '../../components/portal/PortalHeader';
 import { Sidebar } from '../../components/portal/Sidebar';
 import { Search, Filter, Plus, Edit, Eye, Power, Lock, Trash2, X, ChevronLeft, ChevronRight } from 'lucide-react';
-import { SEMESTERS } from '../../data/collegeDataGenerator';
+const SEMESTERS = [
+  { sem: 'Semester 1', year: '1st Year' },
+  { sem: 'Semester 2', year: '1st Year' },
+  { sem: 'Semester 3', year: '2nd Year' },
+  { sem: 'Semester 4', year: '2nd Year' },
+  { sem: 'Semester 5', year: '3rd Year' },
+  { sem: 'Semester 6', year: '3rd Year' },
+  { sem: 'Semester 7', year: '4th Year' },
+  { sem: 'Semester 8', year: '4th Year' }
+];
 
 export const AdminStudents = () => {
   const [mobileOpen, setMobileOpen] = useState(false);

@@ -10,7 +10,7 @@ import { getApiBaseUrl, getAuthHeaders } from '../../utils/apiClient';
 
 export const TeacherDashboard = () => {
   const { currentUser } = useAuth();
-  const { facultyClassAssignments, users = [], leaveRequests, helpdesk, announcements, attendance, examinations } = useData();
+  const { facultyClassAssignments = [], courses = [], subjects = [], users = [], leaveRequests = [], helpdesk = [], announcements = [], attendance = [], examinations = [] } = useData();
   const [mobileOpen, setMobileOpen] = useState(false);
   const navigate = useNavigate();
 
@@ -38,12 +38,60 @@ export const TeacherDashboard = () => {
     if (teacherId) fetchSummary();
   }, [teacherId]);
 
-  // Get all assignments for this faculty (or fallback for demo teacher)
-  const myAssignments = facultyClassAssignments.filter(
-    fca => fca.facultyId === teacherId || fca.facultyName === teacherName
-  );
+  // Dynamically compute all assignments across all live database sources
+  const activeAssignments = React.useMemo(() => {
+    const fEmp = (currentUser.employeeId || '').toLowerCase().trim();
+    const fId = (currentUser.id || '').toLowerCase().trim();
+    const fUser = (currentUser.username || '').toLowerCase().trim();
+    const fName = (currentUser.name || '').toLowerCase().trim();
 
-  const activeAssignments = myAssignments;
+    // 1. Direct class allocations from facultyClassAssignments
+    const fromFCA = (facultyClassAssignments || []).filter(fca => {
+      if (!fca) return false;
+      const tId = (fca.teacherId || fca.facultyId || '').toLowerCase().trim();
+      const tName = (fca.teacherName || fca.facultyName || '').toLowerCase().trim();
+      return (
+        (fEmp && (tId === fEmp || tId.includes(fEmp))) ||
+        (fId && (tId === fId || tId.includes(fId))) ||
+        (fUser && (tId === fUser || tId.includes(fUser))) ||
+        (fName && (tName === fName || tName.includes(fName) || fName.includes(tName)))
+      );
+    });
+
+    // 2. Direct curriculum courses and subjects assigned to this teacher
+    const fromCourses = (courses || subjects || []).filter(c => {
+      if (!c) return false;
+      const cTeacherId = (c.assignedTeacherId || '').toLowerCase().trim();
+      const cTeacherName = (c.assignedTeacherName || '').toLowerCase().trim();
+      return (
+        (fEmp && (cTeacherId === fEmp || cTeacherId.includes(fEmp))) ||
+        (fId && (cTeacherId === fId || cTeacherId.includes(fId))) ||
+        (fName && (cTeacherName === fName || cTeacherName.includes(fName) || fName.includes(cTeacherName)))
+      );
+    }).map(c => ({
+      assignmentId: `ASN-${c.code}-${c.departmentCode || 'DEPT'}`,
+      classId: `${c.departmentCode || 'DEPT'}-${(c.semester || 'SEM').toUpperCase().replace(/\s/g, '')}-A`,
+      subjectCode: c.code,
+      subjectName: c.name,
+      department: c.department,
+      departmentCode: c.departmentCode || (c.code ? c.code.split('-')[0] : 'DEPT'),
+      year: c.year || 'Academic Year',
+      semester: c.semester || 'Current Semester',
+      section: 'A',
+      studentCount: 30
+    }));
+
+    // Deduplicate uniquely by subjectCode + classId
+    const map = new Map();
+    [...fromFCA, ...fromCourses].forEach(item => {
+      const key = `${item.subjectCode || item.code}-${item.classId || item.semester}`;
+      if (!map.has(key)) {
+        map.set(key, item);
+      }
+    });
+
+    return Array.from(map.values());
+  }, [facultyClassAssignments, courses, subjects, currentUser]);
 
   // ── Dynamic: total students across all assigned classes ───────────────────
   const totalStudentsCount = activeAssignments.reduce((acc, curr) => acc + getEnrolledStudentCount(curr, users), 0);

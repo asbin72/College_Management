@@ -1,4 +1,6 @@
+import 'dotenv/config';
 import mysql from 'mysql2/promise';
+import { initializeDatabase } from '../server/init_db.js';
 
 async function clearAllDemoData() {
   const dbPool = mysql.createPool({
@@ -12,14 +14,9 @@ async function clearAllDemoData() {
     ssl: process.env.MYSQLHOST ? { rejectUnauthorized: false } : undefined
   });
 
-  const tablesToClear = [
-    'students',
-    'teachers',
-    'courses',
-    'subjects',
+  const operationalTablesToClear = [
     'attendance_logs',
     'teacher_attendance_logs',
-    'faculty_class_assignments',
     'examinations',
     'marks',
     'internal_marks',
@@ -31,33 +28,29 @@ async function clearAllDemoData() {
     'fee_payments',
     'admission_applications',
     'helpdesk_tickets',
-    'announcements',
     'audit_logs'
   ];
 
-  console.log('🧹 Clearing all demo data from MySQL database...');
+  console.log('🧹 Clearing operational demo data from MySQL database...');
 
   try {
-    for (const table of tablesToClear) {
+    for (const table of operationalTablesToClear) {
       try {
-        await dbPool.query(`DELETE FROM ${table}`);
+        await dbPool.query(`DELETE FROM \`${table}\``);
         console.log(`  ✓ Cleared table: ${table}`);
       } catch (err) {
         console.warn(`  ⚠️ Could not clear ${table}:`, err.message);
       }
     }
 
-    // Verify Admin account exists
-    const [admins] = await dbPool.query('SELECT COUNT(*) as count FROM admins');
-    if (admins[0].count === 0) {
-      await dbPool.query(`
-        INSERT INTO admins (id, employeeId, name, email, password, designation)
-        VALUES ('user-admin', 'ADM-001', 'Administrator', 'admin@kalpanaaa.edu', 'admin123', 'Super Administrator & Dean')
-      `);
-      console.log('  🔑 Preserved default admin account (admin@kalpanaaa.edu / admin123)');
-    }
+    // Clean up any test departments or test accounts if present
+    await dbPool.query(`DELETE FROM departments WHERE id LIKE 'dept-TEST%' OR code LIKE 'TEST%' OR name LIKE 'Department of Test%'`);
+    await dbPool.query(`DELETE FROM students WHERE studentId LIKE 'TEST%' OR studentId LIKE 'DEMO-TEST%'`);
+    await dbPool.query(`DELETE FROM teachers WHERE employeeId LIKE 'TEST%' OR id LIKE 'user-test%'`);
 
-    console.log('✨ Database cleanup complete! All demo data has been removed.');
+    console.log('✨ Operational data cleared. Ensuring institutional baseline is healthy...');
+    await initializeDatabase();
+    console.log('🎉 Database is clean, secure, and ready!');
   } catch (err) {
     console.error('❌ Error clearing database:', err);
   } finally {

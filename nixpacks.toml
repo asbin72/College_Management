@@ -1,4 +1,7 @@
 # Railway Nixpacks Configuration for Kalpanaaa Education
+[variables]
+NODE_ENV = 'production'
+
 [phases.setup]
 nixPkgs = ['nodejs_18']
 

@@ -8,7 +8,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { initializeDatabase } from './init_db.js';
 import { globalErrorHandler, asyncHandler, AppError } from './middleware/errorHandler.js';
-import { authRateLimiter, publicApiRateLimiter } from './middleware/rateLimiter.js';
+import { authRateLimiter, publicApiRateLimiter, clearRateLimitMap } from './middleware/rateLimiter.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -16,20 +16,60 @@ const distPath = path.join(__dirname, '../dist');
 
 const app = express();
 const PORT = process.env.PORT || process.env.RAILWAY_PORT || 5000;
-const JWT_SECRET = process.env.JWT_SECRET || 'kalpanaaa_super_secret_jwt_key_2026_prod';
-if (!process.env.JWT_SECRET) {
-  console.warn('⚠️ WARNING: JWT_SECRET environment variable is not explicitly defined. Using default fallback key.');
-}
 
-// CORS — universal access for frontend and API clients
+// Mandatory JWT_SECRET verification (refuse startup if missing)
+if (!process.env.JWT_SECRET) {
+  console.error('❌ FATAL ERROR: JWT_SECRET environment variable is missing.');
+  throw new Error('JWT_SECRET environment variable must be explicitly defined. The server refuses to start with an insecure default.');
+}
+const JWT_SECRET = process.env.JWT_SECRET;
+
+// Explicit CORS Allowlist (No wildcard / reflect-any-origin with credentials)
+const rawFrontendUrls = process.env.FRONTEND_URL || 'http://localhost:3000,http://127.0.0.1:3000';
+const allowedOrigins = rawFrontendUrls.split(',').map(u => u.trim().replace(/\/$/, '')).filter(Boolean);
+
 app.use(cors({
-  origin: true,
+  origin: (origin, callback) => {
+    // Allow non-browser requests (e.g. server-to-server, curl, integration tests) without origin header
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+    return callback(new Error(`CORS policy violation: origin ${origin} is not allowed by explicit allowlist.`));
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'x-test-secret']
 }));
 app.options('*', cors());
 app.use(express.json({ limit: '10mb' }));
+
+// Test-Mode Rate Limit Reset: Strictly gated to non-production environments and requires explicit TEST_SECRET
+const isProductionDeployment = process.env.NODE_ENV === 'production' || !!process.env.VERCEL || !!process.env.RAILWAY_ENVIRONMENT;
+
+if (!isProductionDeployment && (process.env.NODE_ENV === 'test' || process.env.ENABLE_TEST_RESET === 'true')) {
+  if (!process.env.TEST_SECRET) {
+    if (process.env.NODE_ENV === 'test') {
+      console.error('❌ FATAL ERROR: TEST_SECRET environment variable is missing.');
+      throw new Error('TEST_SECRET environment variable must be explicitly defined when running tests. The server refuses to start or register test reset routes with an insecure default.');
+    } else {
+      console.warn('⚠️ WARNING: TEST_SECRET not defined; /api/test/reset-rate-limit endpoint will NOT be registered.');
+    }
+  } else {
+    app.post('/api/test/reset-rate-limit', (req, res) => {
+      if (process.env.NODE_ENV === 'production' || isProductionDeployment) {
+        return res.status(404).json({ success: false, message: 'Not Found' });
+      }
+      const testSecret = req.headers['x-test-secret'];
+      const expectedSecret = process.env.TEST_SECRET;
+      if (!expectedSecret || !testSecret || testSecret !== expectedSecret) {
+        return res.status(403).json({ success: false, message: 'Forbidden: Invalid or missing test secret header.' });
+      }
+      clearRateLimitMap();
+      return res.json({ success: true, message: 'Rate limits cleared for test environment.' });
+    });
+  }
+}
 
 // Health Check Endpoint for zero-downtime deploy monitoring
 app.get(['/health', '/api/health'], async (req, res) => {
@@ -249,7 +289,7 @@ function authenticateToken(req, res, next) {
     const token = authHeader.split(' ')[1];
     jwt.verify(token, JWT_SECRET, (err, decoded) => {
       if (err) {
-        return res.status(403).json({ success: false, message: 'Invalid or expired session token.' });
+        return res.status(401).json({ success: false, message: 'Invalid or expired session token.' });
       }
       req.user = decoded;
       next();
@@ -266,91 +306,29 @@ function requireRole(allowedRoles = []) {
     if (!req.user) {
       return res.status(401).json({ success: false, message: 'Authentication required. Please log in.' });
     }
-    if (!allowedRoles.includes(req.user.role)) {
+    const userRole = req.user.role;
+    const isAllowed = allowedRoles.includes(userRole) ||
+      (allowedRoles.includes('TEACHER') && userRole === 'STAFF') ||
+      (allowedRoles.includes('STAFF') && userRole === 'TEACHER');
+    if (!isAllowed) {
       return res.status(403).json({ 
         success: false, 
-        message: `Forbidden: Access restricted to [${allowedRoles.join(', ')}]. Your role: ${req.user.role}` 
+        message: `Forbidden: Access restricted to [${allowedRoles.join(', ')}]. Your role: ${userRole}` 
       });
     }
     next();
   };
 }
 
-const PUBLIC_API_ALLOWLIST = [
-  { method: 'GET', path: '/api/health' },
-  { method: 'GET', path: '/health' },
-  { method: 'POST', path: '/api/auth/login' },
-  { method: 'POST', path: '/api/auth/student-signup' },
-  { method: 'POST', path: '/api/admissions/apply' },
-  { method: 'POST', path: '/api/contact' },
-  { method: 'GET', path: '/api/events' },
-  { method: 'GET', path: '/api/announcements' },
-  { method: 'GET', path: '/api/news' },
-  { method: 'GET', path: '/api/courses' },
-  { method: 'GET', path: '/api/subjects' },
-  { method: 'GET', path: '/api/departments' }
-];
-
-function isPublicRoute(method, path) {
-  const cleanPath = path.split('?')[0];
-  return PUBLIC_API_ALLOWLIST.some(item => 
-    item.method === method.toUpperCase() && item.path === cleanPath
-  );
-}
-
-function securityRouteGuard(req, res, next) {
-  const fullPath = req.originalUrl || req.url || '';
-  const cleanPath = fullPath.split('?')[0];
-
-  if (isPublicRoute(req.method, cleanPath)) {
-    return next();
-  }
-
-  const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return res.status(401).json({ success: false, message: 'Authentication required. Please log in.' });
-  }
-
-  const token = authHeader.split(' ')[1];
-  jwt.verify(token, JWT_SECRET, (err, decoded) => {
-    if (err) {
-      return res.status(403).json({ success: false, message: 'Invalid or expired session token.' });
-    }
-    req.user = decoded;
-
-    const method = req.method.toUpperCase();
-    if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(method)) {
-      const p = cleanPath;
-      const role = req.user?.role;
-
-      if (p.startsWith('/api/admin')) {
-        if (role !== 'ADMIN') {
-          return res.status(403).json({ success: false, message: `Forbidden: ${method} ${p} requires ADMIN role.` });
-        }
-      } else if (p.startsWith('/api/teachers') || p.startsWith('/api/students') || p.startsWith('/api/departments') || p.startsWith('/api/courses') || p.startsWith('/api/subjects') || p.startsWith('/api/timetable') || p.startsWith('/api/faculty-assignments') || p.startsWith('/api/announcements')) {
-        if (!['ADMIN', 'TEACHER'].includes(role)) {
-          return res.status(403).json({ success: false, message: `Forbidden: ${method} ${p} requires ADMIN or TEACHER role.` });
-        }
-      } else if (p.startsWith('/api/attendance') || p.startsWith('/api/teacher-attendance') || p.startsWith('/api/marks') || p.startsWith('/api/assignments')) {
-        if (!['ADMIN', 'TEACHER'].includes(role)) {
-          return res.status(403).json({ success: false, message: `Forbidden: ${method} ${p} requires ADMIN or TEACHER role.` });
-        }
-      } else {
-        if (!['ADMIN', 'TEACHER', 'STUDENT'].includes(role)) {
-          return res.status(403).json({ success: false, message: `Forbidden: Unauthorized role '${role}'.` });
-        }
-      }
-    }
-
-    next();
-  });
-}
-
-app.use('/api', securityRouteGuard);
-
 // -------------------------------------------------------------
 // 2. AUTHENTICATION ENDPOINTS
 // -------------------------------------------------------------
+const PASSWORD_MIGRATION_QUERIES = {
+  admins: 'UPDATE admins SET password = ? WHERE id = ?',
+  teachers: 'UPDATE teachers SET password = ? WHERE id = ?',
+  students: 'UPDATE students SET password = ? WHERE id = ?'
+};
+
 async function verifyAndMigratePassword(inputPassword, storedPassword, tableName, rowId) {
   if (!storedPassword) return false;
   let isValid = false;
@@ -360,8 +338,13 @@ async function verifyAndMigratePassword(inputPassword, storedPassword, tableName
     isValid = (inputPassword === storedPassword);
     if (isValid) {
       try {
-        const hashed = await bcrypt.hash(inputPassword, 10);
-        await dbPool.query(`UPDATE ${tableName} SET password = ? WHERE id = ?`, [hashed, rowId]);
+        const updateQuery = PASSWORD_MIGRATION_QUERIES[tableName];
+        if (updateQuery) {
+          const hashed = await bcrypt.hash(inputPassword, 10);
+          await dbPool.query(updateQuery, [hashed, rowId]);
+        } else {
+          console.error(`Invalid table name for password migration: ${tableName}`);
+        }
       } catch (e) {
         console.error(`Failed to migrate password hash for ${tableName} ${rowId}:`, e);
       }
@@ -371,12 +354,13 @@ async function verifyAndMigratePassword(inputPassword, storedPassword, tableName
 }
 
 app.post('/api/auth/login', authRateLimiter, async (req, res) => {
-  const { identifier, password } = req.body;
-  if (!identifier || !password) {
+  const { identifier, email, username, password } = req.body;
+  const rawId = identifier || email || username;
+  if (!rawId || !password) {
     return res.status(400).json({ success: false, message: 'Identifier and password are required.' });
   }
 
-  const cleanId = (identifier || '').trim();
+  const cleanId = (rawId || '').trim();
   const normalizedId = cleanId.toLowerCase();
 
   let altDomainId = normalizedId;
@@ -390,7 +374,7 @@ app.post('/api/auth/login', authRateLimiter, async (req, res) => {
     // 1. Check Admins
     const [admRows] = await dbPool.query(
       `SELECT * FROM admins 
-       WHERE (LOWER(email) = ? OR LOWER(email) = ? OR employeeId = ? OR id = ? OR LOWER(email) = 'admin@kalpanaaa.edu') 
+       WHERE (LOWER(email) = ? OR LOWER(email) = ? OR employeeId = ? OR id = ?) 
        LIMIT 1`,
       [normalizedId, altDomainId, cleanId, cleanId]
     );
@@ -398,7 +382,7 @@ app.post('/api/auth/login', authRateLimiter, async (req, res) => {
     if (admRows.length > 0) {
       const u = admRows[0];
       const isValid = await verifyAndMigratePassword(password, u.password, 'admins', u.id);
-      if (isValid || (password === 'admin123' && (normalizedId === 'admin@kalpanaaa.edu' || normalizedId === 'admin@kalpanaa.edu' || normalizedId === 'admin'))) {
+      if (isValid) {
         const token = jwt.sign(
           { id: u.id, name: u.name, email: u.email, role: 'ADMIN', employeeId: u.employeeId },
           JWT_SECRET,
@@ -416,8 +400,7 @@ app.post('/api/auth/login', authRateLimiter, async (req, res) => {
     // 2. Check Teachers (Staff)
     const [tchRows] = await dbPool.query(
       `SELECT * FROM teachers 
-       WHERE (LOWER(email) = ? OR LOWER(email) = ? OR employeeId = ? OR id = ? OR LOWER(email) = 'teacher@kalpanaaa.edu') 
-       ORDER BY (CASE WHEN LOWER(email) = ? OR LOWER(email) = 'teacher@kalpanaaa.edu' THEN 0 ELSE 1 END)
+       WHERE (LOWER(email) = ? OR LOWER(email) = ? OR employeeId = ? OR id = ? OR (? IN ('teacher@kalpanaaa.edu', 'teacher@kalpanaa.edu') AND id = 'fac-cse-01')) 
        LIMIT 1`,
       [normalizedId, altDomainId, cleanId, cleanId, normalizedId]
     );
@@ -425,7 +408,7 @@ app.post('/api/auth/login', authRateLimiter, async (req, res) => {
     if (tchRows.length > 0) {
       const u = tchRows[0];
       const isValid = await verifyAndMigratePassword(password, u.password, 'teachers', u.id);
-      if (isValid || (password === 'teacher123' && (normalizedId === 'teacher@kalpanaaa.edu' || normalizedId === 'teacher@kalpanaa.edu' || normalizedId === 'teacher'))) {
+      if (isValid) {
         const token = jwt.sign(
           { id: u.id, name: u.name, email: u.email, role: 'TEACHER', employeeId: u.employeeId },
           JWT_SECRET,
@@ -443,16 +426,15 @@ app.post('/api/auth/login', authRateLimiter, async (req, res) => {
     // 3. Check Students
     const [stdRows] = await dbPool.query(
       `SELECT * FROM students 
-       WHERE (LOWER(email) = ? OR LOWER(email) = ? OR studentId = ? OR rollNo = ? OR registerNumber = ? OR id = ? OR LOWER(email) = 'student@kalpanaaa.edu') 
-       ORDER BY (CASE WHEN LOWER(email) = ? OR LOWER(email) = 'student@kalpanaaa.edu' THEN 0 ELSE 1 END)
+       WHERE (LOWER(email) = ? OR LOWER(email) = ? OR studentId = ? OR rollNo = ? OR registerNumber = ? OR id = ?) 
        LIMIT 1`,
-      [normalizedId, altDomainId, cleanId, cleanId, cleanId, cleanId, normalizedId]
+      [normalizedId, altDomainId, cleanId, cleanId, cleanId, cleanId]
     );
 
     if (stdRows.length > 0) {
       const u = stdRows[0];
       const isValid = await verifyAndMigratePassword(password, u.password, 'students', u.id);
-      if (isValid || (password === 'student123' && (normalizedId === 'student@kalpanaaa.edu' || normalizedId === 'student@kalpanaa.edu' || normalizedId === 'student'))) {
+      if (isValid) {
         const token = jwt.sign(
           { id: u.id, name: u.name, email: u.email, role: 'STUDENT', studentId: u.studentId },
           JWT_SECRET,
@@ -523,11 +505,39 @@ app.post('/api/auth/student-signup', authRateLimiter, async (req, res) => {
       deptCode = 'MBA';
     }
 
-    const uniqueNum = Math.floor(1000 + Math.random() * 9000);
-    const id = `stu-${deptCode.toLowerCase()}-1-${uniqueNum}`;
-    const studentId = `STU-${deptCode}-${uniqueNum}`;
-    const rollNo = `24${deptCode}1${String(uniqueNum).slice(-3)}`;
-    const regNo = `REG-2026-${deptCode}-${uniqueNum}`;
+    let id, studentId, rollNo, regNo;
+    let attempts = 0;
+    let isUnique = false;
+
+    while (!isUnique && attempts < 10) {
+      attempts++;
+      const uniqueNum = Math.floor(1000 + Math.random() * 9000);
+      const candidateId = `stu-${deptCode.toLowerCase()}-1-${uniqueNum}`;
+      const candidateStudentId = `STU-${deptCode}-${uniqueNum}`;
+      const candidateRollNo = `24${deptCode}1${String(uniqueNum).slice(-3)}`;
+      const candidateRegNo = `REG-2026-${deptCode}-${uniqueNum}`;
+
+      const [conflicts] = await dbPool.query(
+        'SELECT id FROM students WHERE id = ? OR studentId = ? OR rollNo = ? OR registerNumber = ? LIMIT 1',
+        [candidateId, candidateStudentId, candidateRollNo, candidateRegNo]
+      );
+
+      if (conflicts.length === 0) {
+        id = candidateId;
+        studentId = candidateStudentId;
+        rollNo = candidateRollNo;
+        regNo = candidateRegNo;
+        isUnique = true;
+      }
+    }
+
+    if (!isUnique) {
+      const entropy = Date.now().toString().slice(-6);
+      id = `stu-${deptCode.toLowerCase()}-1-${entropy}`;
+      studentId = `STU-${deptCode}-${entropy}`;
+      rollNo = `24${deptCode}1${entropy.slice(-3)}`;
+      regNo = `REG-2026-${deptCode}-${entropy}`;
+    }
 
     const hashedPassword = await bcrypt.hash(cleanPass, 10);
 
@@ -605,13 +615,17 @@ app.post('/api/auth/student-signup', authRateLimiter, async (req, res) => {
 // -------------------------------------------------------------
 // 3. PROFILE & USER MANAGEMENT ENDPOINTS
 // -------------------------------------------------------------
-app.put('/api/profile', async (req, res) => {
-  const { userId, role, name, phone, bio, bloodGroup, address, guardianName, guardianPhone, designation, specialization, avatar, photoUrl, image } = req.body;
+app.put('/api/profile', authenticateToken, async (req, res) => {
+  const { name, phone, bio, bloodGroup, address, guardianName, guardianPhone, designation, specialization, avatar, photoUrl, image } = req.body;
   const photo = avatar || photoUrl || image || null;
-  const userIdentifier = (userId || '').trim();
+  const authUserId = req.user.id;
+  const authRole = req.user.role;
+  const authEmail = req.user.email || '';
+  const authStudentId = req.user.studentId || authUserId;
+  const authEmployeeId = req.user.employeeId || authUserId;
 
   try {
-    if (role === 'STUDENT') {
+    if (authRole === 'STUDENT') {
       await dbPool.query(
         `UPDATE students 
          SET name = COALESCE(?, name), phone = COALESCE(?, phone), bio = COALESCE(?, bio),
@@ -619,29 +633,76 @@ app.put('/api/profile', async (req, res) => {
              guardianName = COALESCE(?, guardianName), guardianPhone = COALESCE(?, guardianPhone),
              avatar = COALESCE(?, avatar), photoUrl = COALESCE(?, photoUrl)
          WHERE id = ? OR studentId = ? OR email = ?`,
-        [name, phone, bio, bloodGroup, address, guardianName, guardianPhone, photo, photo, userIdentifier, userIdentifier, userIdentifier]
+        [name, phone, bio, bloodGroup, address, guardianName, guardianPhone, photo, photo, authUserId, authStudentId, authEmail]
       );
-    } else if (role === 'TEACHER' || role === 'STAFF') {
+    } else if (authRole === 'TEACHER' || authRole === 'STAFF') {
       await dbPool.query(
         `UPDATE teachers 
          SET name = COALESCE(?, name), phone = COALESCE(?, phone), bio = COALESCE(?, bio),
              designation = COALESCE(?, designation), specialization = COALESCE(?, specialization),
              avatar = COALESCE(?, avatar), photoUrl = COALESCE(?, photoUrl)
          WHERE id = ? OR employeeId = ? OR email = ?`,
-        [name, phone, bio, designation, specialization, photo, photo, userIdentifier, userIdentifier, userIdentifier]
+        [name, phone, bio, designation, specialization, photo, photo, authUserId, authEmployeeId, authEmail]
       );
-    } else if (role === 'ADMIN') {
+    } else if (authRole === 'ADMIN') {
       await dbPool.query(
         `UPDATE admins 
          SET name = COALESCE(?, name), phone = COALESCE(?, phone),
              designation = COALESCE(?, designation), avatar = COALESCE(?, avatar), photoUrl = COALESCE(?, photoUrl)
          WHERE id = ? OR employeeId = ? OR email = ?`,
-        [name, phone, designation, photo, photo, userIdentifier, userIdentifier, userIdentifier]
+        [name, phone, designation, photo, photo, authUserId, authEmployeeId, authEmail]
       );
     }
 
-    broadcastRealTimeEvent('USER_PROFILE_UPDATED', { userId: userIdentifier, role, name, photo });
+    broadcastRealTimeEvent('USER_PROFILE_UPDATED', { userId: authUserId, role: authRole, name, photo });
     res.json({ success: true, message: 'Profile updated in MySQL database and broadcast to real-time stream.' });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Admin-only profile modification route to edit any user's profile
+app.put('/api/admin/users/:role/:id/profile', authenticateToken, requireRole(['ADMIN']), async (req, res) => {
+  const { role, id } = req.params;
+  const targetRole = (role || '').toUpperCase();
+  const { name, phone, bio, bloodGroup, address, guardianName, guardianPhone, designation, specialization, avatar, photoUrl, image } = req.body;
+  const photo = avatar || photoUrl || image || null;
+  const targetId = (id || '').trim();
+
+  try {
+    if (targetRole === 'STUDENT') {
+      await dbPool.query(
+        `UPDATE students 
+         SET name = COALESCE(?, name), phone = COALESCE(?, phone), bio = COALESCE(?, bio),
+             bloodGroup = COALESCE(?, bloodGroup), address = COALESCE(?, address),
+             guardianName = COALESCE(?, guardianName), guardianPhone = COALESCE(?, guardianPhone),
+             avatar = COALESCE(?, avatar), photoUrl = COALESCE(?, photoUrl)
+         WHERE id = ? OR studentId = ? OR email = ?`,
+        [name, phone, bio, bloodGroup, address, guardianName, guardianPhone, photo, photo, targetId, targetId, targetId]
+      );
+    } else if (targetRole === 'TEACHER' || targetRole === 'STAFF') {
+      await dbPool.query(
+        `UPDATE teachers 
+         SET name = COALESCE(?, name), phone = COALESCE(?, phone), bio = COALESCE(?, bio),
+             designation = COALESCE(?, designation), specialization = COALESCE(?, specialization),
+             avatar = COALESCE(?, avatar), photoUrl = COALESCE(?, photoUrl)
+         WHERE id = ? OR employeeId = ? OR email = ?`,
+        [name, phone, bio, designation, specialization, photo, photo, targetId, targetId, targetId]
+      );
+    } else if (targetRole === 'ADMIN') {
+      await dbPool.query(
+        `UPDATE admins 
+         SET name = COALESCE(?, name), phone = COALESCE(?, phone),
+             designation = COALESCE(?, designation), avatar = COALESCE(?, avatar), photoUrl = COALESCE(?, photoUrl)
+         WHERE id = ? OR employeeId = ? OR email = ?`,
+        [name, phone, designation, photo, photo, targetId, targetId, targetId]
+      );
+    } else {
+      return res.status(400).json({ success: false, message: 'Invalid user role specified.' });
+    }
+
+    broadcastRealTimeEvent('USER_PROFILE_UPDATED', { userId: targetId, role: targetRole, name, photo });
+    res.json({ success: true, message: 'User profile updated by administrator.' });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
@@ -666,7 +727,7 @@ app.get('/api/students', authenticateToken, requireRole(['ADMIN', 'TEACHER', 'ST
   }
 });
 
-app.put('/api/students/:id', async (req, res) => {
+app.put('/api/students/:id', authenticateToken, requireRole(['ADMIN']), async (req, res) => {
   const { id } = req.params;
   const fields = req.body;
   try {
@@ -703,7 +764,7 @@ app.put('/api/students/:id', async (req, res) => {
   }
 });
 
-app.patch('/api/students/:id/status', async (req, res) => {
+app.patch('/api/students/:id/status', authenticateToken, requireRole(['ADMIN']), async (req, res) => {
   const { id } = req.params;
   const { status } = req.body;
   try {
@@ -715,7 +776,7 @@ app.patch('/api/students/:id/status', async (req, res) => {
   }
 });
 
-app.post('/api/students', async (req, res) => {
+app.post('/api/students', authenticateToken, requireRole(['ADMIN']), async (req, res) => {
   const s = req.body;
   const id = s.id || `stu-${Date.now()}`;
   const studentId = s.studentId || `STU-${Math.floor(1000 + Math.random() * 9000)}`;
@@ -759,7 +820,7 @@ app.post('/api/students', async (req, res) => {
   }
 });
 
-app.post('/api/students/activate-all', async (req, res) => {
+app.post('/api/students/activate-all', authenticateToken, requireRole(['ADMIN']), async (req, res) => {
   try {
     await dbPool.query("UPDATE students SET status = 'Active'");
     await dbPool.query("UPDATE teachers SET status = 'Active'");
@@ -770,7 +831,7 @@ app.post('/api/students/activate-all', async (req, res) => {
   }
 });
 
-app.delete('/api/students/:id', async (req, res) => {
+app.delete('/api/students/:id', authenticateToken, requireRole(['ADMIN']), async (req, res) => {
   const { id } = req.params;
   try {
     await dbPool.query('DELETE FROM students WHERE id = ? OR studentId = ?', [id, id]);
@@ -781,7 +842,7 @@ app.delete('/api/students/:id', async (req, res) => {
   }
 });
 
-app.get('/api/teachers', authenticateToken, requireRole(['ADMIN', 'TEACHER', 'STUDENT']), async (req, res) => {
+app.get(['/api/teachers', '/api/faculty'], async (req, res) => {
   try {
     const [rows] = await dbPool.query(`
       SELECT id, employeeId, name, email, department, designation, phone, qualification,
@@ -796,7 +857,7 @@ app.get('/api/teachers', authenticateToken, requireRole(['ADMIN', 'TEACHER', 'ST
   }
 });
 
-app.post('/api/teachers', async (req, res) => {
+app.post('/api/teachers', authenticateToken, requireRole(['ADMIN']), async (req, res) => {
   const t = req.body;
   const id = t.id || `user-teacher-${Date.now()}`;
   try {
@@ -830,7 +891,67 @@ app.post('/api/teachers', async (req, res) => {
   }
 });
 
-app.delete('/api/teachers/:id', async (req, res) => {
+app.put('/api/teachers/:id', authenticateToken, async (req, res) => {
+  const { id } = req.params;
+  const isOwner = req.user.id === id || req.user.employeeId === id;
+  const isAdmin = req.user.role === 'ADMIN';
+
+  if (!isOwner && !isAdmin) {
+    return res.status(403).json({ success: false, message: 'Forbidden: Insufficient privileges to modify this faculty record.' });
+  }
+
+  const t = req.body;
+  const photo = t.photoUrl || t.avatar || t.image || null;
+
+  try {
+    await dbPool.query(`
+      UPDATE teachers
+      SET name = COALESCE(?, name),
+          phone = COALESCE(?, phone),
+          designation = COALESCE(?, designation),
+          department = COALESCE(?, department),
+          qualification = COALESCE(?, qualification),
+          specialization = COALESCE(?, specialization),
+          experience = COALESCE(?, experience),
+          bio = COALESCE(?, bio),
+          avatar = COALESCE(?, avatar),
+          photoUrl = COALESCE(?, photoUrl)
+      WHERE id = ? OR employeeId = ?
+    `, [
+      isAdmin ? t.name : null,
+      t.phone || null,
+      isAdmin ? t.designation : null,
+      isAdmin ? t.department : null,
+      isAdmin ? t.qualification : null,
+      t.specialization || null,
+      isAdmin ? t.experience : null,
+      t.bio || null,
+      photo,
+      photo,
+      id,
+      id
+    ]);
+
+    broadcastRealTimeEvent('TEACHER_UPDATED', { id, employeeId: id, ...t });
+    res.json({ success: true, message: `Teacher ${id} profile updated in database.` });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.patch('/api/teachers/:id/status', authenticateToken, requireRole(['ADMIN']), async (req, res) => {
+  const { id } = req.params;
+  const { status } = req.body;
+  try {
+    await dbPool.query('UPDATE teachers SET status = ? WHERE id = ? OR employeeId = ?', [status || 'Active', id, id]);
+    broadcastRealTimeEvent('TEACHER_STATUS_UPDATED', { id, status });
+    res.json({ success: true, message: `Teacher status updated to ${status}.` });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.delete('/api/teachers/:id', authenticateToken, requireRole(['ADMIN']), async (req, res) => {
   const { id } = req.params;
   try {
     await dbPool.query('DELETE FROM teachers WHERE id = ? OR employeeId = ?', [id, id]);
@@ -851,7 +972,7 @@ app.get('/api/courses', async (req, res) => {
   }
 });
 
-app.post('/api/courses', async (req, res) => {
+app.post('/api/courses', authenticateToken, requireRole(['ADMIN']), async (req, res) => {
   const s = req.body;
   const id = s.id || `crs-${Date.now()}`;
   try {
@@ -873,7 +994,7 @@ app.post('/api/courses', async (req, res) => {
   }
 });
 
-app.put('/api/courses/:id', async (req, res) => {
+app.put('/api/courses/:id', authenticateToken, requireRole(['ADMIN']), async (req, res) => {
   const { id } = req.params;
   const s = req.body;
   try {
@@ -917,7 +1038,7 @@ app.put('/api/courses/:id', async (req, res) => {
       `, [newCode, newName, oldCode, oldName]).catch(() => {});
 
       await dbPool.query(`
-        UPDATE marks SET subjectCode = ?, subjectName = ? WHERE subjectCode = ? OR subjectName = ?
+        UPDATE internal_marks SET subjectCode = ?, subjectName = ? WHERE subjectCode = ? OR subjectName = ?
       `, [newCode, newName, oldCode, oldName]).catch(() => {});
     }
 
@@ -928,7 +1049,7 @@ app.put('/api/courses/:id', async (req, res) => {
   }
 });
 
-app.delete('/api/courses/:id', async (req, res) => {
+app.delete('/api/courses/:id', authenticateToken, requireRole(['ADMIN']), async (req, res) => {
   const { id } = req.params;
   const { force } = req.query;
   try {
@@ -995,7 +1116,7 @@ app.get('/api/subjects', async (req, res) => {
   }
 });
 
-app.post('/api/subjects', async (req, res) => {
+app.post('/api/subjects', authenticateToken, requireRole(['ADMIN']), async (req, res) => {
   const s = req.body;
   const id = s.id || `sub-${Date.now()}`;
   try {
@@ -1018,7 +1139,7 @@ app.post('/api/subjects', async (req, res) => {
   }
 });
 
-app.put('/api/subjects/:id', async (req, res) => {
+app.put('/api/subjects/:id', authenticateToken, requireRole(['ADMIN']), async (req, res) => {
   const { id } = req.params;
   const s = req.body;
   try {
@@ -1042,7 +1163,7 @@ app.put('/api/subjects/:id', async (req, res) => {
   }
 });
 
-app.delete('/api/subjects/:id', async (req, res) => {
+app.delete('/api/subjects/:id', authenticateToken, requireRole(['ADMIN']), async (req, res) => {
   const { id } = req.params;
   try {
     await dbPool.query('DELETE FROM subjects WHERE id = ? OR code = ?', [id, id]);
@@ -1055,7 +1176,7 @@ app.delete('/api/subjects/:id', async (req, res) => {
 });
 
 // --- STAFF SUBJECT ASSIGNMENTS ENDPOINTS ---
-app.get('/api/staff-subject-assignments', async (req, res) => {
+app.get('/api/staff-subject-assignments', authenticateToken, requireRole(['ADMIN', 'TEACHER']), async (req, res) => {
   try {
     const [rows] = await dbPool.query('SELECT * FROM staff_subject_assignments ORDER BY created_at DESC');
     res.json(rows);
@@ -1064,7 +1185,7 @@ app.get('/api/staff-subject-assignments', async (req, res) => {
   }
 });
 
-app.get('/api/subjects/:subjectId/staff', async (req, res) => {
+app.get('/api/subjects/:subjectId/staff', authenticateToken, requireRole(['ADMIN', 'TEACHER']), async (req, res) => {
   const { subjectId } = req.params;
   try {
     const [rows] = await dbPool.query(
@@ -1077,7 +1198,7 @@ app.get('/api/subjects/:subjectId/staff', async (req, res) => {
   }
 });
 
-app.post('/api/subjects/:subjectId/staff', async (req, res) => {
+app.post('/api/subjects/:subjectId/staff', authenticateToken, requireRole(['ADMIN']), async (req, res) => {
   const { subjectId } = req.params;
   const { teacherId, teacherName, subjectCode, subjectName, courseId, courseName, department } = req.body;
   const id = `ssa-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
@@ -1102,7 +1223,7 @@ app.post('/api/subjects/:subjectId/staff', async (req, res) => {
   }
 });
 
-app.delete('/api/subjects/:subjectId/staff/:teacherId', async (req, res) => {
+app.delete('/api/subjects/:subjectId/staff/:teacherId', authenticateToken, requireRole(['ADMIN']), async (req, res) => {
   const { subjectId, teacherId } = req.params;
   try {
     await dbPool.query(
@@ -1116,25 +1237,30 @@ app.delete('/api/subjects/:subjectId/staff/:teacherId', async (req, res) => {
   }
 });
 
-app.get('/api/teachers/:teacherId/assigned-classes', async (req, res) => {
+app.get('/api/teachers/:teacherId/assigned-classes', authenticateToken, requireRole(['ADMIN', 'TEACHER']), async (req, res) => {
   const { teacherId } = req.params;
   try {
     const [fcaRows] = await dbPool.query(
-      'SELECT * FROM faculty_class_assignments WHERE teacherId = ? OR facultyId = ?',
-      [teacherId, teacherId]
+      'SELECT * FROM faculty_class_assignments WHERE teacherId = ? OR teacherId IN (SELECT employeeId FROM teachers WHERE id = ? OR employeeId = ?)',
+      [teacherId, teacherId, teacherId]
     );
     const [ssaRows] = await dbPool.query(
-      'SELECT * FROM staff_subject_assignments WHERE teacherId = ?',
-      [teacherId]
+      'SELECT * FROM staff_subject_assignments WHERE teacherId = ? OR teacherId IN (SELECT employeeId FROM teachers WHERE id = ? OR employeeId = ?)',
+      [teacherId, teacherId, teacherId]
     );
-    res.json({ facultyClassAssignments: fcaRows, staffSubjectAssignments: ssaRows });
+    const mappedFca = fcaRows.map(r => ({
+      ...r,
+      facultyId: r.teacherId,
+      facultyName: r.teacherName
+    }));
+    res.json({ facultyClassAssignments: mappedFca, staffSubjectAssignments: ssaRows });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
 // --- ADMISSIONS APPLICATION ENDPOINTS WITH MYSQL STORAGE & DYNAMIC AGE CALCULATION ---
-app.get('/api/admissions/applications', async (req, res) => {
+app.get('/api/admissions/applications', authenticateToken, requireRole(['ADMIN']), async (req, res) => {
   try {
     const [rows] = await dbPool.query('SELECT * FROM admission_applications ORDER BY created_at DESC');
     res.json(rows);
@@ -1212,7 +1338,7 @@ app.post('/api/admissions/apply', publicApiRateLimiter, async (req, res) => {
   }
 });
 
-app.put('/api/admissions/applications/:id', async (req, res) => {
+app.put('/api/admissions/applications/:id', authenticateToken, requireRole(['ADMIN']), async (req, res) => {
   const { id } = req.params;
   const { status } = req.body;
   try {
@@ -1224,7 +1350,7 @@ app.put('/api/admissions/applications/:id', async (req, res) => {
   }
 });
 
-app.get('/api/fees', async (req, res) => {
+app.get('/api/fees', authenticateToken, requireRole(['ADMIN', 'TEACHER', 'STUDENT']), async (req, res) => {
   try {
     const [rows] = await dbPool.query('SELECT * FROM fee_payments ORDER BY created_at DESC');
     res.json(rows.map(r => ({
@@ -1242,10 +1368,21 @@ app.get('/api/fees', async (req, res) => {
   }
 });
 
-app.post('/api/fees/pay', async (req, res) => {
+app.post('/api/fees/pay', authenticateToken, requireRole(['STUDENT', 'ADMIN']), async (req, res) => {
   const { studentId, amount, feeType, paymentMethod, idempotencyKey } = req.body;
   if (!studentId || !amount) {
     return res.status(400).json({ success: false, message: 'Student ID and amount are required.' });
+  }
+
+  // Student ownership check: Students can only pay for their own account; Admins can pay for anyone
+  if (req.user && req.user.role === 'STUDENT') {
+    const callerStudentId = req.user.studentId || req.user.id;
+    if (studentId !== callerStudentId && studentId !== req.user.id && studentId !== req.user.studentId) {
+      return res.status(403).json({
+        success: false,
+        message: 'Forbidden: Students may only submit fee payments for their own student account.'
+      });
+    }
   }
 
   const numAmount = Number(amount || 0);
@@ -1345,7 +1482,7 @@ app.get('/api/departments/:id/courses', async (req, res) => {
   }
 });
 
-app.post('/api/departments', async (req, res) => {
+app.post('/api/departments', authenticateToken, requireRole(['ADMIN']), async (req, res) => {
   const d = req.body;
   const id = d.id || `dept-${Date.now()}`;
   try {
@@ -1362,7 +1499,7 @@ app.post('/api/departments', async (req, res) => {
   }
 });
 
-app.put('/api/departments/:id', async (req, res) => {
+app.put('/api/departments/:id', authenticateToken, requireRole(['ADMIN']), async (req, res) => {
   const { id } = req.params;
   const d = req.body;
   try {
@@ -1380,7 +1517,7 @@ app.put('/api/departments/:id', async (req, res) => {
   }
 });
 
-app.delete('/api/departments/:id', async (req, res) => {
+app.delete('/api/departments/:id', authenticateToken, requireRole(['ADMIN']), async (req, res) => {
   const { id } = req.params;
   const { force } = req.query;
   try {
@@ -1408,7 +1545,7 @@ app.delete('/api/departments/:id', async (req, res) => {
     res.status(500).json({ success: false, error: err.message });
   }
 });
-app.get('/api/classes', async (req, res) => {
+app.get('/api/classes', authenticateToken, requireRole(['ADMIN', 'TEACHER', 'STUDENT']), async (req, res) => {
   try {
     const [rows] = await dbPool.query('SELECT * FROM classes ORDER BY department, semester');
     res.json(rows);
@@ -1420,13 +1557,17 @@ app.get('/api/classes', async (req, res) => {
 app.get('/api/faculty-assignments', async (req, res) => {
   try {
     const [rows] = await dbPool.query('SELECT * FROM faculty_class_assignments ORDER BY departmentCode, year, assignmentId');
-    res.json(rows);
+    res.json(rows.map(r => ({
+      ...r,
+      facultyId: r.teacherId || r.facultyId,
+      facultyName: r.teacherName || r.facultyName
+    })));
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-app.post('/api/faculty-assignments', async (req, res) => {
+app.post('/api/faculty-assignments', authenticateToken, requireRole(['ADMIN']), async (req, res) => {
   const f = req.body;
   const assignmentId = f.assignmentId || `FAC-ASN-${Date.now()}`;
   try {
@@ -1453,7 +1594,7 @@ app.post('/api/faculty-assignments', async (req, res) => {
   }
 });
 
-app.delete('/api/faculty-assignments/:assignmentId', async (req, res) => {
+app.delete('/api/faculty-assignments/:assignmentId', authenticateToken, requireRole(['ADMIN']), async (req, res) => {
   const { assignmentId } = req.params;
   try {
     await dbPool.query('DELETE FROM faculty_class_assignments WHERE assignmentId = ?', [assignmentId]);
@@ -1465,7 +1606,7 @@ app.delete('/api/faculty-assignments/:assignmentId', async (req, res) => {
 });
 
 // --- TIMETABLE SLOTS ENDPOINTS ---
-app.get('/api/timetable', async (req, res) => {
+app.get('/api/timetable', authenticateToken, requireRole(['ADMIN', 'TEACHER', 'STUDENT']), async (req, res) => {
   const { department, semester, section, day, teacherId, courseId } = req.query;
   try {
     let sql = 'SELECT * FROM timetable_slots WHERE 1=1';
@@ -1485,7 +1626,7 @@ app.get('/api/timetable', async (req, res) => {
   }
 });
 
-app.post('/api/timetable', async (req, res) => {
+app.post('/api/timetable', authenticateToken, requireRole(['ADMIN']), async (req, res) => {
   const t = req.body;
   const id = t.id || `slot-${Date.now()}-${Math.floor(100 + Math.random() * 900)}`;
   const classId = t.classId || `CLS-${t.departmentCode || t.department}-${t.semester}-${t.section || 'A'}`;
@@ -1529,7 +1670,7 @@ app.post('/api/timetable', async (req, res) => {
   }
 });
 
-app.put('/api/timetable/:id', async (req, res) => {
+app.put('/api/timetable/:id', authenticateToken, requireRole(['ADMIN']), async (req, res) => {
   const { id } = req.params;
   const t = req.body;
   try {
@@ -1553,7 +1694,7 @@ app.put('/api/timetable/:id', async (req, res) => {
   }
 });
 
-app.delete('/api/timetable/:id', async (req, res) => {
+app.delete('/api/timetable/:id', authenticateToken, requireRole(['ADMIN']), async (req, res) => {
   const { id } = req.params;
   try {
     await dbPool.query('DELETE FROM timetable_slots WHERE id = ?', [id]);
@@ -1565,7 +1706,7 @@ app.delete('/api/timetable/:id', async (req, res) => {
 });
 
 // --- STUDENT TODAY SUBJECTS ENDPOINT ---
-app.get('/api/students/:id/today-subjects', async (req, res) => {
+app.get('/api/students/:id/today-subjects', authenticateToken, requireRole(['ADMIN', 'TEACHER', 'STUDENT']), async (req, res) => {
   const { id } = req.params;
   try {
     const [stdRows] = await dbPool.query('SELECT * FROM students WHERE id = ? OR studentId = ?', [id, id]);
@@ -1606,7 +1747,7 @@ app.get('/api/students/:id/today-subjects', async (req, res) => {
 });
 
 // --- TEACHER DASHBOARD & CLASSES ENDPOINTS ---
-app.get('/api/teachers/:id/dashboard-summary', async (req, res) => {
+app.get('/api/teachers/:id/dashboard-summary', authenticateToken, requireRole(['ADMIN', 'TEACHER']), async (req, res) => {
   const { id } = req.params;
   try {
     const [tchRows] = await dbPool.query('SELECT * FROM teachers WHERE id = ? OR employeeId = ?', [id, id]);
@@ -1614,8 +1755,11 @@ app.get('/api/teachers/:id/dashboard-summary', async (req, res) => {
     const empId = tch ? tch.employeeId : id;
     const tchName = tch ? tch.name : id;
 
-    const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-    const todayDay = days[new Date().getDay()];
+    const fullDays = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    const shortDays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const todayIndex = new Date().getDay();
+    const todayFull = fullDays[todayIndex];
+    const todayShort = shortDays[todayIndex];
 
     const [assignedSubjects] = await dbPool.query(
       'SELECT DISTINCT subjectCode, subjectName FROM timetable_slots WHERE teacherId = ? OR teacherName = ?',
@@ -1628,8 +1772,8 @@ app.get('/api/teachers/:id/dashboard-summary', async (req, res) => {
     );
 
     const [todayClasses] = await dbPool.query(
-      'SELECT * FROM timetable_slots WHERE (teacherId = ? OR teacherName = ?) AND dayOfWeek = ? ORDER BY period ASC',
-      [empId, tchName, todayDay]
+      'SELECT * FROM timetable_slots WHERE (teacherId = ? OR teacherName = ?) AND (dayOfWeek = ? OR dayOfWeek = ? OR dayOfWeek LIKE ?) ORDER BY period ASC',
+      [empId, tchName, todayFull, todayShort, `${todayShort}%`]
     );
 
     res.json({
@@ -1646,7 +1790,7 @@ app.get('/api/teachers/:id/dashboard-summary', async (req, res) => {
   }
 });
 
-app.get('/api/teachers/:id/classes-today', async (req, res) => {
+app.get('/api/teachers/:id/classes-today', authenticateToken, requireRole(['ADMIN', 'TEACHER']), async (req, res) => {
   const { id } = req.params;
   try {
     const [tchRows] = await dbPool.query('SELECT * FROM teachers WHERE id = ? OR employeeId = ?', [id, id]);
@@ -1654,12 +1798,15 @@ app.get('/api/teachers/:id/classes-today', async (req, res) => {
     const empId = tch ? tch.employeeId : id;
     const tchName = tch ? tch.name : id;
 
-    const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-    const todayDay = days[new Date().getDay()];
+    const fullDays = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    const shortDays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const todayIndex = new Date().getDay();
+    const todayFull = fullDays[todayIndex];
+    const todayShort = shortDays[todayIndex];
 
     const [todayClasses] = await dbPool.query(
-      'SELECT * FROM timetable_slots WHERE (teacherId = ? OR teacherName = ?) AND dayOfWeek = ? ORDER BY period ASC',
-      [empId, tchName, todayDay]
+      'SELECT * FROM timetable_slots WHERE (teacherId = ? OR teacherName = ?) AND (dayOfWeek = ? OR dayOfWeek = ? OR dayOfWeek LIKE ?) ORDER BY period ASC',
+      [empId, tchName, todayFull, todayShort, `${todayShort}%`]
     );
     res.json(todayClasses);
   } catch (err) {
@@ -1667,7 +1814,7 @@ app.get('/api/teachers/:id/classes-today', async (req, res) => {
   }
 });
 
-app.get('/api/teachers/:id/attendance-overview', async (req, res) => {
+app.get('/api/teachers/:id/attendance-overview', authenticateToken, requireRole(['ADMIN', 'TEACHER']), async (req, res) => {
   const { id } = req.params;
   try {
     const [tchRows] = await dbPool.query('SELECT * FROM teachers WHERE id = ? OR employeeId = ?', [id, id]);
@@ -1704,7 +1851,7 @@ app.get('/api/teachers/:id/attendance-overview', async (req, res) => {
   }
 });
 
-app.get('/api/attendance', async (req, res) => {
+app.get('/api/attendance', authenticateToken, requireRole(['ADMIN', 'TEACHER', 'STUDENT']), async (req, res) => {
   try {
     const [rows] = await dbPool.query('SELECT * FROM attendance_logs ORDER BY date DESC, created_at DESC');
     res.json(rows);
@@ -1713,7 +1860,7 @@ app.get('/api/attendance', async (req, res) => {
   }
 });
 
-app.put('/api/attendance/:id', async (req, res) => {
+app.put('/api/attendance/:id', authenticateToken, requireRole(['ADMIN', 'TEACHER']), async (req, res) => {
   const { id } = req.params;
   const { status } = req.body;
   try {
@@ -1725,7 +1872,7 @@ app.put('/api/attendance/:id', async (req, res) => {
   }
 });
 
-app.post('/api/attendance/batch', async (req, res) => {
+app.post('/api/attendance/batch', authenticateToken, requireRole(['ADMIN', 'TEACHER']), async (req, res) => {
   const { records = [], markedBy = 'Staff Portal' } = req.body;
   try {
     let count = 0;
@@ -1752,7 +1899,7 @@ app.post('/api/attendance/batch', async (req, res) => {
 // -------------------------------------------------------------
 // TEACHER & FACULTY ATTENDANCE ENDPOINTS
 // -------------------------------------------------------------
-app.get('/api/teacher-attendance', async (req, res) => {
+app.get('/api/teacher-attendance', authenticateToken, requireRole(['ADMIN', 'TEACHER']), async (req, res) => {
   try {
     const [rows] = await dbPool.query('SELECT * FROM teacher_attendance_logs ORDER BY date DESC, teacherId ASC');
     res.json(rows);
@@ -1761,7 +1908,7 @@ app.get('/api/teacher-attendance', async (req, res) => {
   }
 });
 
-app.put('/api/teacher-attendance/:id', async (req, res) => {
+app.put('/api/teacher-attendance/:id', authenticateToken, requireRole(['ADMIN', 'TEACHER']), async (req, res) => {
   const { id } = req.params;
   const { status, remarks } = req.body;
   try {
@@ -1776,7 +1923,7 @@ app.put('/api/teacher-attendance/:id', async (req, res) => {
 // -------------------------------------------------------------
 // ASSIGNMENTS & SUBMISSIONS ENDPOINTS
 // -------------------------------------------------------------
-app.get('/api/assignments', async (req, res) => {
+app.get('/api/assignments', authenticateToken, requireRole(['ADMIN', 'TEACHER', 'STUDENT']), async (req, res) => {
   try {
     const [assignments] = await dbPool.query('SELECT * FROM assignments ORDER BY dueDate ASC, id DESC');
     const [submissions] = await dbPool.query('SELECT * FROM assignment_submissions ORDER BY submittedDate DESC');
@@ -1805,7 +1952,7 @@ app.get('/api/assignments', async (req, res) => {
   }
 });
 
-app.post('/api/assignments', async (req, res) => {
+app.post('/api/assignments', authenticateToken, requireRole(['ADMIN', 'TEACHER']), async (req, res) => {
   const a = req.body;
   const id = a.id || `ASN-${Date.now()}`;
   try {
@@ -1835,7 +1982,7 @@ app.post('/api/assignments', async (req, res) => {
   }
 });
 
-app.put('/api/assignments/:id', async (req, res) => {
+app.put('/api/assignments/:id', authenticateToken, requireRole(['ADMIN', 'TEACHER']), async (req, res) => {
   const { id } = req.params;
   const a = req.body;
   try {
@@ -1854,7 +2001,7 @@ app.put('/api/assignments/:id', async (req, res) => {
   }
 });
 
-app.delete('/api/assignments/:id', async (req, res) => {
+app.delete('/api/assignments/:id', authenticateToken, requireRole(['ADMIN', 'TEACHER']), async (req, res) => {
   const { id } = req.params;
   try {
     await dbPool.query('DELETE FROM assignment_submissions WHERE assignmentId = ?', [id]);
@@ -1866,9 +2013,24 @@ app.delete('/api/assignments/:id', async (req, res) => {
   }
 });
 
-app.post('/api/assignments/:id/submit', async (req, res) => {
+app.post('/api/assignments/:id/submit', authenticateToken, requireRole(['STUDENT']), async (req, res) => {
   const { id } = req.params;
   const { studentId, studentName, fileName, comments } = req.body;
+
+  // Strict Object-Level Authorization: Students can only submit their own coursework
+  if (req.user?.role === 'STUDENT') {
+    const authStudentId = req.user.studentId || req.user.id;
+    if (studentId && studentId !== authStudentId && req.user.id !== studentId) {
+      return res.status(403).json({
+        success: false,
+        message: `Forbidden: Object authorization violation. You (${authStudentId}) cannot submit assignments on behalf of student ${studentId}.`
+      });
+    }
+  }
+
+  const effectiveStudentId = (req.user?.role === 'STUDENT') ? (req.user.studentId || req.user.id || studentId) : studentId;
+  const effectiveStudentName = (req.user?.role === 'STUDENT') ? (req.user.name || studentName || 'Student') : studentName;
+
   const subId = `SUB-${Date.now()}`;
   const submittedDate = new Date().toISOString().split('T')[0];
   try {
@@ -1876,7 +2038,7 @@ app.post('/api/assignments/:id/submit', async (req, res) => {
       INSERT INTO assignment_submissions (id, assignmentId, studentId, studentName, submittedDate, fileName, comments)
       VALUES (?, ?, ?, ?, ?, ?, ?)
       ON DUPLICATE KEY UPDATE submittedDate = VALUES(submittedDate), fileName = VALUES(fileName), comments = VALUES(comments)
-    `, [subId, id, studentId, studentName, submittedDate, fileName || 'submission.pdf', comments || '']);
+    `, [subId, id, effectiveStudentId, effectiveStudentName, submittedDate, fileName || 'submission.pdf', comments || '']);
 
     // Notify teacher
     const [asnRows] = await dbPool.query('SELECT teacherId, title FROM assignments WHERE id = ?', [id]);
@@ -1895,7 +2057,7 @@ app.post('/api/assignments/:id/submit', async (req, res) => {
   }
 });
 
-app.put('/api/assignments/:id/submissions/:subId/grade', async (req, res) => {
+app.put('/api/assignments/:id/submissions/:subId/grade', authenticateToken, requireRole(['ADMIN', 'TEACHER']), async (req, res) => {
   const { id, subId } = req.params;
   const { marks, feedback, gradedBy } = req.body;
   try {
@@ -1925,7 +2087,7 @@ app.put('/api/assignments/:id/submissions/:subId/grade', async (req, res) => {
 // -------------------------------------------------------------
 // NOTIFICATIONS & AUDIT LOGS ENDPOINTS
 // -------------------------------------------------------------
-app.get('/api/notifications', async (req, res) => {
+app.get('/api/notifications', authenticateToken, requireRole(['ADMIN', 'TEACHER', 'STUDENT']), async (req, res) => {
   try {
     const [rows] = await dbPool.query('SELECT * FROM notifications ORDER BY date DESC, id DESC');
     res.json(rows.map(r => ({
@@ -1937,7 +2099,7 @@ app.get('/api/notifications', async (req, res) => {
   }
 });
 
-app.post('/api/notifications', async (req, res) => {
+app.post('/api/notifications', authenticateToken, requireRole(['ADMIN', 'TEACHER']), async (req, res) => {
   const { userId, userRole, title, message } = req.body;
   const id = `NOTIF-${Date.now()}`;
   try {
@@ -1953,7 +2115,7 @@ app.post('/api/notifications', async (req, res) => {
   }
 });
 
-app.put('/api/notifications/:id/read', async (req, res) => {
+app.put('/api/notifications/:id/read', authenticateToken, requireRole(['ADMIN', 'TEACHER', 'STUDENT']), async (req, res) => {
   const { id } = req.params;
   try {
     await dbPool.query('UPDATE notifications SET isRead = 1 WHERE id = ?', [id]);
@@ -1963,7 +2125,7 @@ app.put('/api/notifications/:id/read', async (req, res) => {
   }
 });
 
-app.put('/api/notifications/read-all', async (req, res) => {
+app.put('/api/notifications/read-all', authenticateToken, requireRole(['ADMIN', 'TEACHER', 'STUDENT']), async (req, res) => {
   const { userId, userRole } = req.body;
   try {
     if (userId) {
@@ -1977,7 +2139,7 @@ app.put('/api/notifications/read-all', async (req, res) => {
   }
 });
 
-app.delete('/api/notifications/:id', async (req, res) => {
+app.delete('/api/notifications/:id', authenticateToken, requireRole(['ADMIN', 'TEACHER', 'STUDENT']), async (req, res) => {
   const { id } = req.params;
   try {
     await dbPool.query('DELETE FROM notifications WHERE id = ?', [id]);
@@ -1987,7 +2149,7 @@ app.delete('/api/notifications/:id', async (req, res) => {
   }
 });
 
-app.delete('/api/notifications/clear', async (req, res) => {
+app.delete('/api/notifications/clear', authenticateToken, requireRole(['ADMIN', 'TEACHER', 'STUDENT']), async (req, res) => {
   const { userId } = req.body;
   try {
     if (userId) {
@@ -1999,7 +2161,7 @@ app.delete('/api/notifications/clear', async (req, res) => {
   }
 });
 
-app.get('/api/audit-logs', async (req, res) => {
+app.get('/api/audit-logs', authenticateToken, requireRole(['ADMIN']), async (req, res) => {
   try {
     const [rows] = await dbPool.query('SELECT * FROM audit_logs ORDER BY timestamp DESC, id DESC');
     res.json(rows);
@@ -2008,7 +2170,7 @@ app.get('/api/audit-logs', async (req, res) => {
   }
 });
 
-app.post('/api/audit-logs', async (req, res) => {
+app.post('/api/audit-logs', authenticateToken, requireRole(['ADMIN', 'TEACHER', 'STUDENT']), async (req, res) => {
   const { actorId, actorRole, action, entityType, entityId, details } = req.body;
   const id = `ADT-${Date.now()}`;
   try {
@@ -2022,7 +2184,7 @@ app.post('/api/audit-logs', async (req, res) => {
   }
 });
 
-app.post('/api/teacher-attendance', async (req, res) => {
+app.post('/api/teacher-attendance', authenticateToken, requireRole(['ADMIN', 'TEACHER']), async (req, res) => {
   const { teacherId, teacherName, department, designation, date, checkInTime, checkOutTime, status, remarks } = req.body;
   const id = `tatt-${date}-${teacherId}`;
   try {
@@ -2039,7 +2201,7 @@ app.post('/api/teacher-attendance', async (req, res) => {
   }
 });
 
-app.post('/api/attendance', async (req, res) => {
+app.post('/api/attendance', authenticateToken, requireRole(['ADMIN', 'TEACHER']), async (req, res) => {
   const { records } = req.body;
   if (!Array.isArray(records) || records.length === 0) {
     return res.status(400).json({ success: false, message: 'Invalid records array' });
@@ -2074,7 +2236,7 @@ app.post('/api/attendance', async (req, res) => {
   }
 });
 
-app.get('/api/helpdesk', async (req, res) => {
+app.get('/api/helpdesk', authenticateToken, requireRole(['ADMIN', 'TEACHER', 'STUDENT']), async (req, res) => {
   try {
     const [rows] = await dbPool.query('SELECT * FROM helpdesk_tickets ORDER BY created_at DESC');
     res.json(rows.map(r => {
@@ -2106,7 +2268,7 @@ app.get('/api/helpdesk', async (req, res) => {
   }
 });
 
-app.get('/api/helpdesk/tickets', async (req, res) => {
+app.get('/api/helpdesk/tickets', authenticateToken, requireRole(['ADMIN', 'TEACHER', 'STUDENT']), async (req, res) => {
   try {
     const [rows] = await dbPool.query('SELECT * FROM helpdesk_tickets ORDER BY created_at DESC');
     res.json(rows);
@@ -2115,7 +2277,7 @@ app.get('/api/helpdesk/tickets', async (req, res) => {
   }
 });
 
-app.get('/api/users', async (req, res) => {
+app.get('/api/users', authenticateToken, requireRole(['ADMIN', 'TEACHER']), async (req, res) => {
   try {
     const [students] = await dbPool.query('SELECT id, studentId, name, email, department, departmentCode, year, semester, "STUDENT" as role FROM students');
     const [teachers] = await dbPool.query('SELECT id, employeeId, name, email, department, designation, "TEACHER" as role FROM teachers');
@@ -2125,24 +2287,23 @@ app.get('/api/users', async (req, res) => {
   }
 });
 
-app.get('/api/marks', async (req, res) => {
-  try {
-    const [rows] = await dbPool.query('SELECT * FROM marks ORDER BY created_at DESC');
-    res.json(rows);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-app.post('/api/marks', async (req, res) => {
+app.post('/api/marks', authenticateToken, requireRole(['ADMIN', 'TEACHER', 'STAFF']), async (req, res) => {
   const m = req.body;
-  const id = m.id || `MRK-${Date.now()}`;
+  const id = m.id || `MRK-${m.examId || Date.now()}-${m.studentId || 'std'}`;
+  const marksObtained = Number(m.marksObtained || 0);
+  const maxMarks = Number(m.maxMarks || 100);
+  const grade = m.grade || (marksObtained >= 90 ? 'O' : marksObtained >= 80 ? 'A+' : marksObtained >= 70 ? 'A' : marksObtained >= 60 ? 'B+' : marksObtained >= 50 ? 'B' : marksObtained >= 40 ? 'C' : 'F');
+  const status = m.status || 'Submitted';
+  const published = m.published ? 1 : 0;
+
   try {
     await dbPool.query(`
-      INSERT INTO marks (id, examId, studentId, studentName, subjectCode, subjectName, marksObtained, maxMarks, grade, remarks)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      ON DUPLICATE KEY UPDATE marksObtained = VALUES(marksObtained), grade = VALUES(grade), remarks = VALUES(remarks)
-    `, [id, m.examId, m.studentId, m.studentName, m.subjectCode || 'SUB', m.subjectName || 'Course', Number(m.marksObtained || 0), Number(m.maxMarks || 100), m.grade || 'A', m.remarks || '']);
+      INSERT INTO internal_marks (
+        id, examId, studentId, studentName, subjectCode, subjectName,
+        marksObtained, maxMarks, grade, status, published, remarks
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON DUPLICATE KEY UPDATE marksObtained = VALUES(marksObtained), grade = VALUES(grade), remarks = VALUES(remarks), status = VALUES(status), published = VALUES(published)
+    `, [id, m.examId || 'EXAM-GEN', m.studentId, m.studentName, m.subjectCode || 'SUB', m.subjectName || 'Course', marksObtained, maxMarks, grade, status, published, m.remarks || '']);
 
     broadcastRealTimeEvent('MARKS_UPDATED', { id, examId: m.examId, studentId: m.studentId });
     res.json({ success: true, id });
@@ -2179,7 +2340,7 @@ app.post('/api/contact', publicApiRateLimiter, async (req, res) => {
   }
 });
 
-app.post('/api/helpdesk', async (req, res) => {
+app.post('/api/helpdesk', authenticateToken, requireRole(['ADMIN', 'TEACHER', 'STUDENT']), async (req, res) => {
   const t = req.body;
   const id = t.id || `TKT-${Math.floor(1000 + Math.random() * 9000)}`;
   const applicantName = t.applicantName || t.studentName || t.staffName || 'Applicant';
@@ -2245,8 +2406,8 @@ const handleHelpdeskReply = async (req, res) => {
   }
 };
 
-app.put('/api/helpdesk/:id/reply', handleHelpdeskReply);
-app.post('/api/helpdesk/:id/reply', handleHelpdeskReply);
+app.put('/api/helpdesk/:id/reply', authenticateToken, requireRole(['ADMIN', 'TEACHER']), handleHelpdeskReply);
+app.post('/api/helpdesk/:id/reply', authenticateToken, requireRole(['ADMIN', 'TEACHER']), handleHelpdeskReply);
 
 app.get('/api/announcements', async (req, res) => {
   try {
@@ -2257,7 +2418,7 @@ app.get('/api/announcements', async (req, res) => {
   }
 });
 
-app.post('/api/announcements', async (req, res) => {
+app.post('/api/announcements', authenticateToken, requireRole(['ADMIN', 'TEACHER']), async (req, res) => {
   const { title, content, category, target, author } = req.body;
   const id = `ANN-${Date.now()}`;
   const date = new Date().toISOString().split('T')[0];
@@ -2275,7 +2436,7 @@ app.post('/api/announcements', async (req, res) => {
   }
 });
 
-app.get('/api/leave-requests', async (req, res) => {
+app.get('/api/leave-requests', authenticateToken, requireRole(['ADMIN', 'TEACHER', 'STUDENT']), async (req, res) => {
   try {
     const [rows] = await dbPool.query('SELECT * FROM leave_requests ORDER BY created_at DESC');
     res.json(rows);
@@ -2284,7 +2445,7 @@ app.get('/api/leave-requests', async (req, res) => {
   }
 });
 
-app.post('/api/leave-requests', async (req, res) => {
+app.post('/api/leave-requests', authenticateToken, requireRole(['ADMIN', 'TEACHER', 'STUDENT']), async (req, res) => {
   const l = req.body;
   const id = `L-${Math.floor(100 + Math.random() * 900)}`;
   try {
@@ -2301,7 +2462,7 @@ app.post('/api/leave-requests', async (req, res) => {
   }
 });
 
-app.put('/api/leave-requests/:id', async (req, res) => {
+app.put('/api/leave-requests/:id', authenticateToken, requireRole(['ADMIN', 'TEACHER']), async (req, res) => {
   const { id } = req.params;
   const { status, rejectionReason } = req.body;
   try {
@@ -2320,7 +2481,7 @@ app.put('/api/leave-requests/:id', async (req, res) => {
 // -------------------------------------------------------------
 // 7. EXAMINATIONS & STUDENT RESULTS ENDPOINTS
 // -------------------------------------------------------------
-app.get('/api/examinations', async (req, res) => {
+app.get('/api/examinations', authenticateToken, requireRole(['ADMIN', 'TEACHER', 'STUDENT']), async (req, res) => {
   try {
     const [rows] = await dbPool.query('SELECT * FROM examinations ORDER BY date ASC');
     res.json(rows.map(r => ({
@@ -2333,7 +2494,7 @@ app.get('/api/examinations', async (req, res) => {
   }
 });
 
-app.post('/api/examinations', async (req, res) => {
+app.post('/api/examinations', authenticateToken, requireRole(['ADMIN', 'TEACHER']), async (req, res) => {
   const ex = req.body;
   const id = ex.id || `EXAM-2026-${Math.floor(10 + Math.random() * 90)}`;
   try {
@@ -2358,7 +2519,7 @@ app.post('/api/examinations', async (req, res) => {
   }
 });
 
-app.put('/api/examinations/:id/publish', async (req, res) => {
+app.put('/api/examinations/:id/publish', authenticateToken, requireRole(['ADMIN']), async (req, res) => {
   const { id } = req.params;
   try {
     await dbPool.query("UPDATE examinations SET isPublished = 1, status = 'Results Published' WHERE id = ?", [id]);
@@ -2371,7 +2532,7 @@ app.put('/api/examinations/:id/publish', async (req, res) => {
   }
 });
 
-app.get('/api/marks', async (req, res) => {
+app.get('/api/marks', authenticateToken, requireRole(['ADMIN', 'TEACHER', 'STUDENT']), async (req, res) => {
   try {
     const [rows] = await dbPool.query('SELECT * FROM internal_marks ORDER BY examId, studentId');
     res.json(rows.map(r => ({
@@ -2384,7 +2545,7 @@ app.get('/api/marks', async (req, res) => {
   }
 });
 
-app.post('/api/marks/submit', async (req, res) => {
+app.post('/api/marks/submit', authenticateToken, requireRole(['ADMIN', 'TEACHER', 'STAFF']), async (req, res) => {
   const { examId, marks } = req.body;
   if (!Array.isArray(marks) || marks.length === 0) {
     return res.status(400).json({ success: false, message: 'Invalid marks array' });
@@ -2416,7 +2577,7 @@ app.post('/api/marks/submit', async (req, res) => {
   }
 });
 
-app.get('/api/results/student/:studentId', async (req, res) => {
+app.get('/api/results/student/:studentId', authenticateToken, requireRole(['ADMIN', 'TEACHER', 'STUDENT']), async (req, res) => {
   const { studentId } = req.params;
   try {
     const [summaryRows] = await dbPool.query('SELECT * FROM results WHERE student_id = ? ORDER BY semester', [studentId]);

@@ -3,7 +3,7 @@ import { useParams, Link } from 'react-router-dom';
 import { Breadcrumbs } from '../../components/common/Breadcrumbs';
 import { useData } from '../../context/DataContext';
 import { CheckCircle2, BookOpen, ArrowRight, Star, Briefcase, GraduationCap, ShieldCheck, Download } from 'lucide-react';
-import { INITIAL_COURSES } from '../../data/initialMockData';
+
 
 export const CourseDetail = () => {
   const { courseId, course: courseParam } = useParams();
@@ -12,7 +12,7 @@ export const CourseDetail = () => {
 
   const allCourses = Array.from(
     new Map(
-      [...INITIAL_COURSES, ...(courses || [])].filter(Boolean).map(c => [c?.id || c?.code || c?.name || Math.random().toString(), c])
+      (courses || []).filter(Boolean).map(c => [c?.id || c?.code || c?.name || Math.random().toString(), c])
     ).values()
   );
 

@@ -4,8 +4,19 @@ import { useData } from '../../context/DataContext';
 import { PortalHeader } from '../../components/portal/PortalHeader';
 import { Sidebar } from '../../components/portal/Sidebar';
 import { Plus, Search, X, Trash2, CheckCircle2 } from 'lucide-react';
-import { DEPARTMENTS, YEARS, SEMESTERS } from '../../data/collegeDataGenerator';
 import { getTeacherWorkloadStudentCount } from '../../utils/idGenerator';
+
+const YEARS = ['1st Year', '2nd Year', '3rd Year', '4th Year'];
+const SEMESTERS = [
+  { sem: 'Semester 1', year: '1st Year' },
+  { sem: 'Semester 2', year: '1st Year' },
+  { sem: 'Semester 3', year: '2nd Year' },
+  { sem: 'Semester 4', year: '2nd Year' },
+  { sem: 'Semester 5', year: '3rd Year' },
+  { sem: 'Semester 6', year: '3rd Year' },
+  { sem: 'Semester 7', year: '4th Year' },
+  { sem: 'Semester 8', year: '4th Year' }
+];
 
 export const AdminTeachers = () => {
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -110,13 +121,14 @@ export const AdminTeachers = () => {
     });
     const nextEmpId = `EMP-${maxNum + 1}`;
 
+    const deptList = (departments && departments.length > 0) ? departments : [{ code: 'CSE', name: 'Computer Science and Engineering' }];
     setFormData({
       name: '',
       email: '',
       employeeId: nextEmpId,
       username: nextEmpId,
       phone: '+91 98765 43210',
-      department: DEPARTMENTS[0].name,
+      department: deptList[0].name,
       departmentCode: 'CSE',
       designation: 'Assistant Professor',
       qualification: 'M.Tech / Ph.D.',
@@ -366,7 +378,7 @@ export const AdminTeachers = () => {
                       onChange={e => setAllocationForm({ ...allocationForm, departmentCode: e.target.value })}
                       className="w-full p-2.5 bg-slate-50 border rounded-xl font-bold text-navy"
                     >
-                      {DEPARTMENTS.map(d => (
+                      {(departments && departments.length > 0 ? departments : [{ code: 'CSE', name: 'Computer Science and Engineering' }]).map(d => (
                         <option key={d.code} value={d.code}>{d.code} - {d.name}</option>
                       ))}
                     </select>
@@ -549,7 +561,8 @@ export const AdminTeachers = () => {
                     value={formData.department}
                     className="w-full p-2.5 border rounded-xl focus:outline-none focus:border-gold font-bold text-navy" 
                     onChange={e => {
-                      const deptObj = DEPARTMENTS.find(d => d.name === e.target.value);
+                      const deptList = (departments && departments.length > 0) ? departments : [{ code: 'CSE', name: 'Computer Science and Engineering' }];
+                      const deptObj = deptList.find(d => d.name === e.target.value);
                       setFormData({ 
                         ...formData, 
                         department: e.target.value,
@@ -557,7 +570,7 @@ export const AdminTeachers = () => {
                       });
                     }}
                   >
-                    {DEPARTMENTS.map(d => (
+                    {(departments && departments.length > 0 ? departments : [{ code: 'CSE', name: 'Computer Science and Engineering' }]).map(d => (
                       <option key={d.code} value={d.name}>{d.code} - {d.name}</option>
                     ))}
                   </select>

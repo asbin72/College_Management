@@ -20,20 +20,40 @@ export const TeacherSubjects = () => {
 
   const currentFacultyId = currentUser.employeeId || currentUser.username || currentUser.id || 'EMP-101';
   const teacherName = currentUser.name || 'Faculty Member';
-  const teacherDept = currentUser.department || 'Computer Science and Engineering';
+  const teacherDept = currentUser.department || 'Computer Science & Engineering';
+  const fEmp = (currentUser.employeeId || '').toLowerCase().trim();
+  const fId = (currentUser.id || '').toLowerCase().trim();
+  const fName = (currentUser.name || '').toLowerCase().trim();
+  const fDept = (currentUser.department || '').toLowerCase().trim();
+  const isAdmin = currentUser.role === 'ADMIN';
 
   // 1. Get assignments from faculty_class_assignments
-  const myAssignments = facultyClassAssignments.filter(
-    fca => fca.facultyId === currentFacultyId || fca.facultyName === teacherName
-  );
+  const myAssignments = (facultyClassAssignments || []).filter(fca => {
+    if (!fca) return false;
+    if (isAdmin) return true;
+    const tId = (fca.teacherId || fca.facultyId || '').toLowerCase().trim();
+    const tName = (fca.teacherName || fca.facultyName || '').toLowerCase().trim();
+    return (
+      (fEmp && (tId === fEmp || tId.includes(fEmp))) ||
+      (fId && (tId === fId || tId.includes(fId))) ||
+      (fName && (tName === fName || tName.includes(fName) || fName.includes(tName)))
+    );
+  });
 
   // 2. Also match from subjects master list
-  const assignedSubsFromMaster = subjects.filter(s =>
-    s.assignedTeacherId === currentFacultyId ||
-    s.assignedTeacherId === currentUser.id ||
-    s.assignedTeacherName === teacherName ||
-    (Array.isArray(currentUser.assignedSubjects) && currentUser.assignedSubjects.includes(s.code))
-  );
+  const assignedSubsFromMaster = (subjects || []).filter(s => {
+    if (!s) return false;
+    if (isAdmin) return true;
+    const sTeacherId = (s.assignedTeacherId || '').toLowerCase().trim();
+    const sTeacherName = (s.assignedTeacherName || '').toLowerCase().trim();
+    const sDept = (s.department || '').toLowerCase().trim();
+    return (
+      (fEmp && (sTeacherId === fEmp || sTeacherId.includes(fEmp))) ||
+      (fId && (sTeacherId === fId || sTeacherId.includes(fId))) ||
+      (fName && (sTeacherName === fName || sTeacherName.includes(fName) || fName.includes(sTeacherName))) ||
+      (myAssignments.length === 0 && fDept && (sDept.includes(fDept) || fDept.includes(sDept)))
+    );
+  });
 
   // Combine and deduplicate
   const combinedSubjectsMap = new Map();

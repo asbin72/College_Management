@@ -1,28 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useMemo } from 'react';
 import { getCurrentYear, getAcademicYear, generateRegisterNumber, generateTransactionId, generateAppRef } from '../utils/idGenerator';
-import { getAuthHeaders, getApiBaseUrl } from '../utils/apiClient';
-import {
-  INITIAL_USERS,
-  INITIAL_DEPARTMENTS,
-  INITIAL_COURSES,
-  INITIAL_LEAVE_REQUESTS,
-  INITIAL_ANNOUNCEMENTS,
-  INITIAL_NEWS,
-  INITIAL_EVENTS,
-  INITIAL_ATTENDANCE,
-  INITIAL_ASSIGNMENTS,
-  INITIAL_RESULTS,
-  INITIAL_FEES,
-  INITIAL_HELPDESK,
-  INITIAL_AUDIT_LOGS,
-  INITIAL_SUBJECTS,
-  INITIAL_EXAMINATIONS,
-  INITIAL_MARKS
-} from '../data/initialMockData';
-import {
-  generateSubjectOfferings,
-  generateFacultyAndAssignments
-} from '../data/collegeDataGenerator';
+import { getAuthHeaders, getApiBaseUrl, getAuthToken } from '../utils/apiClient';
+
 
 const DataContext = createContext();
 
@@ -37,38 +16,64 @@ export const DataProvider = ({ children }) => {
       const saved = localStorage.getItem(key);
       if (!saved) return fallback;
       const parsed = JSON.parse(saved);
-      return parsed !== null && parsed !== undefined ? parsed : fallback;
+      if (parsed === null || parsed === undefined) return fallback;
+      if (Array.isArray(parsed)) {
+        return parsed.map(item => {
+          if (item && (item.name === 'Demo Teacher' || item.id === 'user-teacher-demo' || item.employeeId === 'EMP-100')) {
+            return {
+              ...item,
+              id: 'user-teacher-demo',
+              employeeId: 'EMP-100',
+              name: 'Dr. Sanjay Kulkarni',
+              qualification: 'Ph.D. in Computer Science (IIT Bombay)',
+              specialization: 'Artificial Intelligence & Neural Networks',
+              designation: 'Senior Professor & Research Dean',
+              department: 'Computer Science & Engineering',
+              experience: '18 Years',
+              experienceYears: 18,
+              avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&q=80&w=300',
+              photoUrl: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&q=80&w=300'
+            };
+          }
+          return item;
+        });
+      }
+      return parsed;
     } catch (e) {
       return fallback;
     }
   };
 
   // -------------------------------------------------------------
-  // STATE INITIALIZATION WITH DETERMINISTIC REAL DATA
+  // STATE INITIALIZATION DYNAMICALLY PERSISTED WITH REAL DATA
   // -------------------------------------------------------------
-  const [users, setUsers] = useState(() => safeLoadStorage('kalpanaaa_data_users_v6', INITIAL_USERS));
+  const [users, setUsers] = useState(() => safeLoadStorage('kalpanaaa_data_users_v6', []));
   
-  const [departments, setDepartments] = useState(() => safeLoadStorage('kalpanaaa_data_departments_v6', INITIAL_DEPARTMENTS));
+  const [departments, setDepartments] = useState(() => safeLoadStorage('kalpanaaa_data_departments_v6', []));
 
   const [subjects, setSubjects] = useState(() => {
     const cached = safeLoadStorage('kalpanaaa_data_subjects_v6', null);
-    if (cached && Array.isArray(cached) && cached.length >= INITIAL_SUBJECTS.length) return cached;
-    return INITIAL_SUBJECTS;
+    if (cached && Array.isArray(cached) && cached.length > 0) return cached;
+    return [];
   });
 
   const courses = subjects;
 
   const [subjectOfferings, setSubjectOfferings] = useState(() => {
     const cached = safeLoadStorage('kalpanaaa_data_subject_offerings_v6', null);
-    if (cached && Array.isArray(cached) && cached.length >= INITIAL_SUBJECTS.length) return cached;
-    return generateSubjectOfferings();
+    if (cached && Array.isArray(cached) && cached.length > 0) return cached;
+    return [];
   });
 
   const [facultyClassAssignments, setFacultyClassAssignments] = useState(() => {
     const cached = safeLoadStorage('kalpanaaa_data_faculty_assignments_v6', null);
     if (Array.isArray(cached) && cached.length > 0) return cached;
-    return generateFacultyAndAssignments().assignments;
+    return [];
   });
+
+  useEffect(() => {
+    try { localStorage.setItem('kalpanaaa_data_faculty_assignments_v6', JSON.stringify(facultyClassAssignments)); } catch (e) {}
+  }, [facultyClassAssignments]);
 
   const [staffSubjectAssignments, setStaffSubjectAssignments] = useState(() => {
     return safeLoadStorage('kalpanaaa_data_staff_subject_assignments_v5', []);
@@ -85,53 +90,33 @@ export const DataProvider = ({ children }) => {
     try { localStorage.setItem('kalpanaaa_active_staff_class_v1', JSON.stringify(classId)); } catch (e) {}
   };
 
-  const [attendance, setAttendance] = useState(() => safeLoadStorage('kalpanaaa_data_attendance_v5', INITIAL_ATTENDANCE));
+  const [attendance, setAttendance] = useState(() => safeLoadStorage('kalpanaaa_data_attendance_v5', []));
 
   const [teacherAttendance, setTeacherAttendance] = useState(() => {
     const cached = safeLoadStorage('kalpanaaa_data_teacher_attendance_v5', null);
     if (Array.isArray(cached) && cached.length > 0) return cached;
-    const faculty = INITIAL_USERS.filter(u => u && (u.role === 'TEACHER' || u.role === 'STAFF'));
-    const dates = ['2026-08-15', '2026-08-14', '2026-08-13'];
-    const logs = [];
-    faculty.filter(Boolean).forEach(t => {
-      dates.forEach(date => {
-        logs.push({
-          id: `tatt-${t?.id || Math.random()}-${date}`,
-          teacherId: t?.employeeId || t?.id || 'EMP-101',
-          teacherName: t.name,
-          department: t.department || 'Computer Science and Engineering',
-          designation: t.designation || 'Faculty Member',
-          date: date,
-          checkInTime: '08:45 AM',
-          checkOutTime: '04:45 PM',
-          status: 'Present',
-          biometricMode: 'Biometric Smart Card',
-          remarks: 'Regular Academic Duty'
-        });
-      });
-    });
-    return logs;
+    return [];
   });
 
-  const [assignments, setAssignments] = useState(() => safeLoadStorage('kalpanaaa_data_assignments_v5', INITIAL_ASSIGNMENTS));
+  const [assignments, setAssignments] = useState(() => safeLoadStorage('kalpanaaa_data_assignments_v5', []));
 
-  const [examinations, setExaminations] = useState(() => safeLoadStorage('kalpanaaa_data_examinations_v5', INITIAL_EXAMINATIONS));
+  const [examinations, setExaminations] = useState(() => safeLoadStorage('kalpanaaa_data_examinations_v5', []));
 
-  const [marksRecords, setMarksRecords] = useState(() => safeLoadStorage('kalpanaaa_data_marks_v5', INITIAL_MARKS));
+  const [marksRecords, setMarksRecords] = useState(() => safeLoadStorage('kalpanaaa_data_marks_v5', []));
 
-  const [results, setResults] = useState(() => safeLoadStorage('kalpanaaa_data_results_v5', INITIAL_RESULTS));
+  const [results, setResults] = useState(() => safeLoadStorage('kalpanaaa_data_results_v5', []));
 
-  const [fees, setFees] = useState(() => safeLoadStorage('kalpanaaa_data_fees_v5', INITIAL_FEES));
+  const [fees, setFees] = useState(() => safeLoadStorage('kalpanaaa_data_fees_v5', []));
 
-  const [leaveRequests, setLeaveRequests] = useState(() => safeLoadStorage('kalpanaaa_data_leave_v5', INITIAL_LEAVE_REQUESTS));
+  const [leaveRequests, setLeaveRequests] = useState(() => safeLoadStorage('kalpanaaa_data_leave_v5', []));
 
-  const [helpdesk, setHelpdesk] = useState(() => safeLoadStorage('kalpanaaa_data_helpdesk_v5', INITIAL_HELPDESK));
+  const [helpdesk, setHelpdesk] = useState(() => safeLoadStorage('kalpanaaa_data_helpdesk_v5', []));
 
-  const [announcements, setAnnouncements] = useState(() => safeLoadStorage('kalpanaaa_data_announcements_v5', INITIAL_ANNOUNCEMENTS));
+  const [announcements, setAnnouncements] = useState(() => safeLoadStorage('kalpanaaa_data_announcements_v5', []));
 
-  const [news, setNews] = useState(() => safeLoadStorage('kalpanaaa_data_news_v5', INITIAL_NEWS));
+  const [news, setNews] = useState(() => safeLoadStorage('kalpanaaa_data_news_v5', []));
 
-  const [events, setEvents] = useState(() => safeLoadStorage('kalpanaaa_data_events_v5', INITIAL_EVENTS));
+  const [events, setEvents] = useState(() => safeLoadStorage('kalpanaaa_data_events_v5', []));
 
   const [admissionApplications, setAdmissionApplications] = useState(() => safeLoadStorage('kalpanaaa_data_admissions_v5', [
     {
@@ -183,7 +168,7 @@ export const DataProvider = ({ children }) => {
     ];
   });
 
-  const [auditLogs, setAuditLogs] = useState(() => safeLoadStorage('kalpanaaa_data_audit_v5', INITIAL_AUDIT_LOGS));
+  const [auditLogs, setAuditLogs] = useState(() => safeLoadStorage('kalpanaaa_data_audit_v5', []));
 
   // -------------------------------------------------------------
   // COMPLETE LOCAL STORAGE PERSISTENCE SYNC (EVERY STATE CHANGE)
@@ -274,79 +259,19 @@ export const DataProvider = ({ children }) => {
   useEffect(() => {
     async function syncFromBackend() {
       try {
+        const token = getAuthToken();
         const headers = getAuthHeaders();
-        const [stdRes, tchRes, subRes, dptRes, crsRes, hlpRes, annRes, levRes, fcaRes, exmRes, mrkRes, attRes, tAttRes, notifRes, adtRes, asnRes, feeRes] = await Promise.allSettled([
-          fetch(`${API_BASE}/students`, { headers }).then(r => r.ok ? r.json() : Promise.reject(r.status)),
-          fetch(`${API_BASE}/teachers`, { headers }).then(r => r.ok ? r.json() : Promise.reject(r.status)),
-          fetch(`${API_BASE}/subjects`, { headers }).then(r => r.ok ? r.json() : Promise.reject(r.status)),
-          fetch(`${API_BASE}/departments`, { headers }).then(r => r.ok ? r.json() : Promise.reject(r.status)),
-          fetch(`${API_BASE}/courses`, { headers }).then(r => r.ok ? r.json() : Promise.reject(r.status)),
-          fetch(`${API_BASE}/helpdesk`, { headers }).then(r => r.ok ? r.json() : Promise.reject(r.status)),
-          fetch(`${API_BASE}/announcements`, { headers }).then(r => r.ok ? r.json() : Promise.reject(r.status)),
-          fetch(`${API_BASE}/leave-requests`, { headers }).then(r => r.ok ? r.json() : Promise.reject(r.status)),
-          fetch(`${API_BASE}/faculty-assignments`, { headers }).then(r => r.ok ? r.json() : Promise.reject(r.status)),
-          fetch(`${API_BASE}/examinations`, { headers }).then(r => r.ok ? r.json() : Promise.reject(r.status)),
-          fetch(`${API_BASE}/marks`, { headers }).then(r => r.ok ? r.json() : Promise.reject(r.status)),
-          fetch(`${API_BASE}/attendance`, { headers }).then(r => r.ok ? r.json() : Promise.reject(r.status)),
-          fetch(`${API_BASE}/teacher-attendance`, { headers }).then(r => r.ok ? r.json() : Promise.reject(r.status)),
-          fetch(`${API_BASE}/notifications`, { headers }).then(r => r.ok ? r.json() : Promise.reject(r.status)),
-          fetch(`${API_BASE}/audit-logs`, { headers }).then(r => r.ok ? r.json() : Promise.reject(r.status)),
-          fetch(`${API_BASE}/assignments`, { headers }).then(r => r.ok ? r.json() : Promise.reject(r.status)),
-          fetch(`${API_BASE}/fees`, { headers }).then(r => r.ok ? r.json() : Promise.reject(r.status))
+
+        // 1. Fetch public datasets (always accessible)
+        const [subRes, dptRes, crsRes, annRes, tchPublicRes, fcaPublicRes] = await Promise.allSettled([
+          fetch(`${API_BASE}/subjects`).then(r => r.ok ? r.json() : Promise.reject(r.status)),
+          fetch(`${API_BASE}/departments`).then(r => r.ok ? r.json() : Promise.reject(r.status)),
+          fetch(`${API_BASE}/courses`).then(r => r.ok ? r.json() : Promise.reject(r.status)),
+          fetch(`${API_BASE}/announcements`).then(r => r.ok ? r.json() : Promise.reject(r.status)),
+          fetch(`${API_BASE}/teachers`).then(r => r.ok ? r.json() : Promise.reject(r.status)),
+          fetch(`${API_BASE}/faculty-assignments`).then(r => r.ok ? r.json() : Promise.reject(r.status))
         ]);
 
-        const anyBackendSuccess = [stdRes, tchRes, subRes, dptRes, crsRes, hlpRes, annRes, levRes, fcaRes, exmRes, mrkRes, attRes, tAttRes, notifRes, adtRes, asnRes, feeRes].some(r => r.status === 'fulfilled');
-
-        if (anyBackendSuccess) {
-          setDbConnected(true);
-        }
-
-        if (stdRes.status === 'fulfilled' && Array.isArray(stdRes.value)) {
-          const teachers = (tchRes.status === 'fulfilled' && Array.isArray(tchRes.value) ? tchRes.value : [])
-            .filter(Boolean)
-            .map(t => ({
-              ...t,
-              role: 'TEACHER',
-              employeeId: t?.employeeId || t?.id || 'EMP-101',
-              status: t?.status || 'Active'
-            }));
-          const students = (stdRes.value || [])
-            .filter(Boolean)
-            .map(s => ({
-              ...s,
-              role: 'STUDENT',
-              studentId: s?.studentId || s?.id || 'STU-101',
-              status: s?.status || 'Active'
-            }));
-
-          setUsers(prev => {
-            const adminUsers = (prev || []).filter(u => u && u.role === 'ADMIN');
-            const fallbackAdmins = adminUsers.length > 0 ? adminUsers : INITIAL_USERS.filter(u => u && u.role === 'ADMIN');
-            const facultyPool = teachers.length > 0 ? teachers : INITIAL_USERS.filter(u => u && u.role === 'TEACHER');
-            return [...fallbackAdmins, ...facultyPool, ...students].filter(Boolean);
-          });
-        }
-        if (attRes.status === 'fulfilled' && Array.isArray(attRes.value) && attRes.value.length > 0) {
-          setAttendance(attRes.value);
-        }
-        if (tAttRes.status === 'fulfilled' && Array.isArray(tAttRes.value) && tAttRes.value.length > 0) {
-          setTeacherAttendance(tAttRes.value);
-        }
-        if (asnRes.status === 'fulfilled' && Array.isArray(asnRes.value) && asnRes.value.length > 0) {
-          setAssignments(asnRes.value);
-        }
-        if (feeRes.status === 'fulfilled' && Array.isArray(feeRes.value) && feeRes.value.length > 0) {
-          setFees(feeRes.value);
-        }
-        if (exmRes.status === 'fulfilled' && Array.isArray(exmRes.value) && exmRes.value.length > 0) {
-          setExaminations(exmRes.value);
-        }
-        if (mrkRes.status === 'fulfilled' && Array.isArray(mrkRes.value) && mrkRes.value.length > 0) {
-          setMarksRecords(mrkRes.value);
-        }
-        if (fcaRes.status === 'fulfilled' && Array.isArray(fcaRes.value) && fcaRes.value.length > 0) {
-          setFacultyClassAssignments(fcaRes.value);
-        }
         if (subRes.status === 'fulfilled' && Array.isArray(subRes.value) && subRes.value.length > 0) {
           setSubjectOfferings(subRes.value);
           setSubjects(subRes.value);
@@ -357,43 +282,139 @@ export const DataProvider = ({ children }) => {
         if (crsRes.status === 'fulfilled' && Array.isArray(crsRes.value) && crsRes.value.length > 0) {
           setCourses(crsRes.value);
         }
-        if (notifRes.status === 'fulfilled' && Array.isArray(notifRes.value) && notifRes.value.length > 0) {
-          setNotifications(notifRes.value);
-        }
-        if (adtRes.status === 'fulfilled' && Array.isArray(adtRes.value) && adtRes.value.length > 0) {
-          setAuditLogs(adtRes.value);
-        }
-        if (hlpRes.status === 'fulfilled' && Array.isArray(hlpRes.value) && hlpRes.value.length > 0) {
-          const normalizedTickets = hlpRes.value.map(r => {
-            let responses = [];
-            try {
-              responses = Array.isArray(r.responses) ? r.responses : (typeof r.replies === 'string' ? JSON.parse(r.replies) : (r.replies || []));
-            } catch (e) {}
-            const isStaff = r.applicantRole === 'STAFF' || r.source === 'STAFF' || (r.staffId && String(r.staffId).startsWith('EMP')) || (r.applicantId && String(r.applicantId).startsWith('EMP'));
-            const applicantName = r.applicantName || r.studentName || r.staffName || (isStaff ? 'Faculty Member' : 'Enrolled Student');
-            const applicantId = r.applicantId || r.studentId || r.staffId || 'STU-2024-001';
-            const applicantRole = r.applicantRole || r.source || (isStaff ? 'STAFF' : 'STUDENT');
-            const targetRole = r.targetRole || (r.targetDesk?.toLowerCase().includes('staff') ? 'STAFF' : 'ADMIN');
-            const createdAt = r.createdAt || r.date || (r.created_at ? new Date(r.created_at).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]);
-
-            return {
-              ...r,
-              applicantName,
-              applicantId,
-              applicantRole,
-              targetRole,
-              createdAt,
-              responses,
-              status: (r.status === 'In Progress' || responses.length > 0) ? 'Responded' : (r.status || 'Open')
-            };
-          });
-          setHelpdesk(normalizedTickets);
-        }
         if (annRes.status === 'fulfilled' && Array.isArray(annRes.value) && annRes.value.length > 0) {
           setAnnouncements(annRes.value);
         }
-        if (levRes.status === 'fulfilled' && Array.isArray(levRes.value) && levRes.value.length > 0) {
-          setLeaveRequests(levRes.value);
+        if (fcaPublicRes.status === 'fulfilled' && Array.isArray(fcaPublicRes.value) && fcaPublicRes.value.length > 0) {
+          setFacultyClassAssignments(fcaPublicRes.value);
+        }
+        if (tchPublicRes.status === 'fulfilled' && Array.isArray(tchPublicRes.value) && tchPublicRes.value.length > 0) {
+          const publicTeachers = tchPublicRes.value
+            .filter(Boolean)
+            .map(t => {
+              const isDemo = t.name === 'Demo Teacher' || t.id === 'user-teacher-demo' || t.employeeId === 'EMP-100';
+              return {
+                ...t,
+                name: isDemo ? (t.name === 'Demo Teacher' ? 'Dr. Sanjay Kulkarni' : t.name) : t.name,
+                role: 'TEACHER',
+                employeeId: t?.employeeId || t?.id || 'EMP-101',
+                status: t?.status || 'Active'
+              };
+            });
+          setUsers(prev => {
+            const nonTeachers = (prev || []).filter(u => u && u.role !== 'TEACHER');
+            return [...nonTeachers, ...publicTeachers];
+          });
+        }
+
+        // 2. Fetch authenticated datasets ONLY if auth token is present
+        if (token) {
+          const [stdRes, tchRes, hlpRes, levRes, fcaRes, exmRes, mrkRes, attRes, tAttRes, notifRes, adtRes, asnRes, feeRes] = await Promise.allSettled([
+            fetch(`${API_BASE}/students`, { headers }).then(r => r.ok ? r.json() : Promise.reject(r.status)),
+            fetch(`${API_BASE}/teachers`, { headers }).then(r => r.ok ? r.json() : Promise.reject(r.status)),
+            fetch(`${API_BASE}/helpdesk`, { headers }).then(r => r.ok ? r.json() : Promise.reject(r.status)),
+            fetch(`${API_BASE}/leave-requests`, { headers }).then(r => r.ok ? r.json() : Promise.reject(r.status)),
+            fetch(`${API_BASE}/faculty-assignments`, { headers }).then(r => r.ok ? r.json() : Promise.reject(r.status)),
+            fetch(`${API_BASE}/examinations`, { headers }).then(r => r.ok ? r.json() : Promise.reject(r.status)),
+            fetch(`${API_BASE}/marks`, { headers }).then(r => r.ok ? r.json() : Promise.reject(r.status)),
+            fetch(`${API_BASE}/attendance`, { headers }).then(r => r.ok ? r.json() : Promise.reject(r.status)),
+            fetch(`${API_BASE}/teacher-attendance`, { headers }).then(r => r.ok ? r.json() : Promise.reject(r.status)),
+            fetch(`${API_BASE}/notifications`, { headers }).then(r => r.ok ? r.json() : Promise.reject(r.status)),
+            fetch(`${API_BASE}/audit-logs`, { headers }).then(r => r.ok ? r.json() : Promise.reject(r.status)),
+            fetch(`${API_BASE}/assignments`, { headers }).then(r => r.ok ? r.json() : Promise.reject(r.status)),
+            fetch(`${API_BASE}/fees`, { headers }).then(r => r.ok ? r.json() : Promise.reject(r.status))
+          ]);
+
+          const anyBackendSuccess = [stdRes, tchRes, subRes, dptRes, crsRes, hlpRes, annRes, levRes, fcaRes, exmRes, mrkRes, attRes, tAttRes, notifRes, adtRes, asnRes, feeRes].some(r => r.status === 'fulfilled');
+          if (anyBackendSuccess) {
+            setDbConnected(true);
+          }
+
+          if (stdRes.status === 'fulfilled' && Array.isArray(stdRes.value)) {
+            const teachers = (tchRes.status === 'fulfilled' && Array.isArray(tchRes.value) ? tchRes.value : [])
+              .filter(Boolean)
+              .map(t => ({
+                ...t,
+                role: 'TEACHER',
+                employeeId: t?.employeeId || t?.id || 'EMP-101',
+                status: t?.status || 'Active'
+              }));
+            const students = (stdRes.value || [])
+              .filter(Boolean)
+              .map(s => ({
+                ...s,
+                role: 'STUDENT',
+                studentId: s?.studentId || s?.id || 'STU-101',
+                status: s?.status || 'Active'
+              }));
+
+            setUsers(prev => {
+              const adminUsers = (prev || []).filter(u => u && u.role === 'ADMIN');
+              const fallbackAdmins = adminUsers.length > 0 ? adminUsers : [];
+              const facultyPool = teachers.length > 0 ? teachers : (prev || []).filter(u => u && (u.role === 'TEACHER' || u.role === 'STAFF'));
+              return [...fallbackAdmins, ...facultyPool, ...students].filter(Boolean);
+            });
+          }
+          if (attRes.status === 'fulfilled' && Array.isArray(attRes.value) && attRes.value.length > 0) {
+            setAttendance(attRes.value);
+          }
+          if (tAttRes.status === 'fulfilled' && Array.isArray(tAttRes.value) && tAttRes.value.length > 0) {
+            setTeacherAttendance(tAttRes.value);
+          }
+          if (asnRes.status === 'fulfilled' && Array.isArray(asnRes.value) && asnRes.value.length > 0) {
+            setAssignments(asnRes.value);
+          }
+          if (feeRes.status === 'fulfilled' && Array.isArray(feeRes.value) && feeRes.value.length > 0) {
+            setFees(feeRes.value);
+          }
+          if (exmRes.status === 'fulfilled' && Array.isArray(exmRes.value) && exmRes.value.length > 0) {
+            setExaminations(exmRes.value);
+          }
+          if (mrkRes.status === 'fulfilled' && Array.isArray(mrkRes.value) && mrkRes.value.length > 0) {
+            setMarksRecords(mrkRes.value);
+          }
+          if (fcaRes.status === 'fulfilled' && Array.isArray(fcaRes.value) && fcaRes.value.length > 0) {
+            setFacultyClassAssignments(fcaRes.value);
+          }
+          if (notifRes.status === 'fulfilled' && Array.isArray(notifRes.value) && notifRes.value.length > 0) {
+            setNotifications(notifRes.value);
+          }
+          if (adtRes.status === 'fulfilled' && Array.isArray(adtRes.value) && adtRes.value.length > 0) {
+            setAuditLogs(adtRes.value);
+          }
+          if (hlpRes.status === 'fulfilled' && Array.isArray(hlpRes.value) && hlpRes.value.length > 0) {
+            const normalizedTickets = hlpRes.value.map(r => {
+              let responses = [];
+              try {
+                responses = Array.isArray(r.responses) ? r.responses : (typeof r.replies === 'string' ? JSON.parse(r.replies) : (r.replies || []));
+              } catch (e) {}
+              const isStaff = r.applicantRole === 'STAFF' || r.source === 'STAFF' || (r.staffId && String(r.staffId).startsWith('EMP')) || (r.applicantId && String(r.applicantId).startsWith('EMP'));
+              const applicantName = r.applicantName || r.studentName || r.staffName || (isStaff ? 'Faculty Member' : 'Enrolled Student');
+              const applicantId = r.applicantId || r.studentId || r.staffId || 'STU-2024-001';
+              const applicantRole = r.applicantRole || r.source || (isStaff ? 'STAFF' : 'STUDENT');
+              const targetRole = r.targetRole || (r.targetDesk?.toLowerCase().includes('staff') ? 'STAFF' : 'ADMIN');
+              const createdAt = r.createdAt || r.date || (r.created_at ? new Date(r.created_at).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]);
+
+              return {
+                ...r,
+                applicantName,
+                applicantId,
+                applicantRole,
+                targetRole,
+                createdAt,
+                responses,
+                status: (r.status === 'In Progress' || responses.length > 0) ? 'Responded' : (r.status || 'Open')
+              };
+            });
+            setHelpdesk(normalizedTickets);
+          }
+          if (levRes.status === 'fulfilled' && Array.isArray(levRes.value) && levRes.value.length > 0) {
+            setLeaveRequests(levRes.value);
+          }
+        } else {
+          if ([subRes, dptRes, crsRes, annRes].some(r => r.status === 'fulfilled')) {
+            setDbConnected(true);
+          }
         }
       } catch (err) {
         console.warn('Backend offline, using persistent local dataset.');
@@ -402,16 +423,23 @@ export const DataProvider = ({ children }) => {
 
     syncFromBackend();
 
+    const onAuthChange = () => syncFromBackend();
+    window.addEventListener('kalpanaaa_auth_changed', onAuthChange);
+    window.addEventListener('storage', onAuthChange);
+
     let eventSource;
     try {
       eventSource = new EventSource(`${API_BASE}/events`);
       eventSource.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);
-          if (data.type === 'ATTENDANCE_MARKED') {
-            fetch(`${API_BASE}/attendance`).then(r => r.json()).then(att => { if (Array.isArray(att)) setAttendance(att); }).catch(() => {});
-          } else if (data.type === 'HELPDESK_TICKET_SUBMITTED' || data.type === 'HELPDESK_REPLY_POSTED') {
-            fetch(`${API_BASE}/helpdesk`).then(r => r.json()).then(hlp => {
+          const sseHeaders = getAuthHeaders();
+          const sseToken = getAuthToken();
+
+          if (data.type === 'ATTENDANCE_MARKED' && sseToken) {
+            fetch(`${API_BASE}/attendance`, { headers: sseHeaders }).then(r => r.ok ? r.json() : null).then(att => { if (Array.isArray(att)) setAttendance(att); }).catch(() => {});
+          } else if ((data.type === 'HELPDESK_TICKET_SUBMITTED' || data.type === 'HELPDESK_REPLY_POSTED') && sseToken) {
+            fetch(`${API_BASE}/helpdesk`, { headers: sseHeaders }).then(r => r.ok ? r.json() : null).then(hlp => {
               if (Array.isArray(hlp)) {
                 const normalized = hlp.map(r => {
                   let responses = [];
@@ -434,18 +462,18 @@ export const DataProvider = ({ children }) => {
               }
             }).catch(() => {});
           } else if (data.type === 'FACULTY_CLASS_ASSIGNED' || data.type === 'FACULTY_CLASS_UNASSIGNED') {
-            fetch(`${API_BASE}/faculty-assignments`).then(r => r.json()).then(fca => { if (Array.isArray(fca)) setFacultyClassAssignments(fca); }).catch(() => {});
+            if (sseToken) fetch(`${API_BASE}/faculty-assignments`, { headers: sseHeaders }).then(r => r.ok ? r.json() : null).then(fca => { if (Array.isArray(fca)) setFacultyClassAssignments(fca); }).catch(() => {});
           } else if (data.type === 'ANNOUNCEMENT_BROADCAST') {
-            fetch(`${API_BASE}/announcements`).then(r => r.json()).then(ann => { if (Array.isArray(ann)) setAnnouncements(ann); }).catch(() => {});
-          } else if (data.type === 'LEAVE_REQUEST_SUBMITTED' || data.type === 'LEAVE_STATUS_UPDATED') {
-            fetch(`${API_BASE}/leave-requests`).then(r => r.json()).then(lev => { if (Array.isArray(lev)) setLeaveRequests(lev); }).catch(() => {});
-          } else if (data.type === 'ASSIGNMENT_CREATED' || data.type === 'ASSIGNMENT_UPDATED' || data.type === 'ASSIGNMENT_DELETED' || data.type === 'ASSIGNMENT_SUBMITTED' || data.type === 'ASSIGNMENT_GRADED') {
-            fetch(`${API_BASE}/assignments`).then(r => r.json()).then(asn => { if (Array.isArray(asn)) setAssignments(asn); }).catch(() => {});
-          } else if (data.type === 'NOTIFICATION_RECEIVED') {
-            fetch(`${API_BASE}/notifications`).then(r => r.json()).then(notifs => { if (Array.isArray(notifs)) setNotifications(notifs); }).catch(() => {});
-          } else if (data.type === 'FEE_PAYMENT_RECORDED') {
-            fetch(`${API_BASE}/fees`).then(r => r.json()).then(feesData => { if (Array.isArray(feesData)) setFees(feesData); }).catch(() => {});
-            fetch(`${API_BASE}/students`).then(r => r.json()).then(stus => {
+            fetch(`${API_BASE}/announcements`).then(r => r.ok ? r.json() : null).then(ann => { if (Array.isArray(ann)) setAnnouncements(ann); }).catch(() => {});
+          } else if ((data.type === 'LEAVE_REQUEST_SUBMITTED' || data.type === 'LEAVE_STATUS_UPDATED') && sseToken) {
+            fetch(`${API_BASE}/leave-requests`, { headers: sseHeaders }).then(r => r.ok ? r.json() : null).then(lev => { if (Array.isArray(lev)) setLeaveRequests(lev); }).catch(() => {});
+          } else if (data.type && data.type.startsWith('ASSIGNMENT_') && sseToken) {
+            fetch(`${API_BASE}/assignments`, { headers: sseHeaders }).then(r => r.ok ? r.json() : null).then(asn => { if (Array.isArray(asn)) setAssignments(asn); }).catch(() => {});
+          } else if (data.type === 'NOTIFICATION_RECEIVED' && sseToken) {
+            fetch(`${API_BASE}/notifications`, { headers: sseHeaders }).then(r => r.ok ? r.json() : null).then(notifs => { if (Array.isArray(notifs)) setNotifications(notifs); }).catch(() => {});
+          } else if (data.type === 'FEE_PAYMENT_RECORDED' && sseToken) {
+            fetch(`${API_BASE}/fees`, { headers: sseHeaders }).then(r => r.ok ? r.json() : null).then(feesData => { if (Array.isArray(feesData)) setFees(feesData); }).catch(() => {});
+            fetch(`${API_BASE}/students`, { headers: sseHeaders }).then(r => r.ok ? r.json() : null).then(stus => {
               if (Array.isArray(stus)) {
                 setUsers(prev => prev.map(u => {
                   const m = stus.find(s => s.id === u.id || s.studentId === u.studentId);
@@ -453,8 +481,8 @@ export const DataProvider = ({ children }) => {
                 }));
               }
             }).catch(() => {});
-          } else if (data.type === 'USER_PROFILE_UPDATED') {
-            fetch(`${API_BASE}/students`).then(r => r.json()).then(stus => {
+          } else if (data.type === 'USER_PROFILE_UPDATED' && sseToken) {
+            fetch(`${API_BASE}/students`, { headers: sseHeaders }).then(r => r.ok ? r.json() : null).then(stus => {
               if (Array.isArray(stus)) {
                 setUsers(prev => prev.map(u => {
                   const m = stus.find(s => s.id === u.id || s.studentId === u.studentId);
@@ -474,6 +502,8 @@ export const DataProvider = ({ children }) => {
     } catch (e) {}
 
     return () => {
+      window.removeEventListener('kalpanaaa_auth_changed', onAuthChange);
+      window.removeEventListener('storage', onAuthChange);
       if (eventSource) eventSource.close();
     };
   }, []);
@@ -576,9 +606,10 @@ export const DataProvider = ({ children }) => {
     setAuditLogs(prev => [newLog, ...prev]);
 
     try {
+      const headers = getAuthHeaders({ 'Content-Type': 'application/json' });
       fetch(`${API_BASE}/audit-logs`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({
           actorId: user?.id || user?.studentId || user?.employeeId || 'SYSTEM',
           actorRole: user?.role || 'SYSTEM',
@@ -658,9 +689,10 @@ export const DataProvider = ({ children }) => {
     setUsers(prev => [newTeacher, ...prev]);
 
     try {
+      const headers = getAuthHeaders({ 'Content-Type': 'application/json' });
       await fetch(`${API_BASE}/teachers`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify(newTeacher)
       });
     } catch (err) {}
@@ -679,9 +711,14 @@ export const DataProvider = ({ children }) => {
     }));
 
     try {
-      fetch(`${API_BASE}/students/${userId}`, {
+      const targetUser = users.find(u => u.id === userId || u.studentId === userId || u.employeeId === userId);
+      const isTeacher = targetUser?.role === 'TEACHER' || targetUser?.role === 'STAFF' || String(userId).startsWith('fac-') || String(userId).startsWith('EMP');
+      const endpoint = isTeacher ? `${API_BASE}/teachers/${userId}` : `${API_BASE}/students/${userId}`;
+      const headers = getAuthHeaders({ 'Content-Type': 'application/json' });
+
+      fetch(endpoint, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify(updatedFields)
       }).catch(() => {});
     } catch (e) {}
@@ -693,8 +730,12 @@ export const DataProvider = ({ children }) => {
     setUsers(prev => prev.filter(u => u.id !== userId && u.studentId !== userId && u.employeeId !== userId));
 
     try {
-      fetch(`${API_BASE}/students/${userId}`, { method: 'DELETE' }).catch(() => {});
-      fetch(`${API_BASE}/teachers/${userId}`, { method: 'DELETE' }).catch(() => {});
+      const targetUser = users.find(u => u.id === userId || u.studentId === userId || u.employeeId === userId);
+      const isTeacher = targetUser?.role === 'TEACHER' || targetUser?.role === 'STAFF' || String(userId).startsWith('fac-') || String(userId).startsWith('EMP');
+      const endpoint = isTeacher ? `${API_BASE}/teachers/${userId}` : `${API_BASE}/students/${userId}`;
+      const headers = getAuthHeaders();
+
+      fetch(endpoint, { method: 'DELETE', headers }).catch(() => {});
     } catch (e) {}
 
     logAction(actorUser, 'USER_DELETED', `Deleted user account ${userId}`);
@@ -712,9 +753,14 @@ export const DataProvider = ({ children }) => {
     }));
 
     try {
-      fetch(`${API_BASE}/students/${userId}/status`, {
+      const targetUser = users.find(u => u.id === userId || u.studentId === userId || u.employeeId === userId);
+      const isTeacher = targetUser?.role === 'TEACHER' || targetUser?.role === 'STAFF' || String(userId).startsWith('fac-') || String(userId).startsWith('EMP');
+      const endpoint = isTeacher ? `${API_BASE}/teachers/${userId}/status` : `${API_BASE}/students/${userId}/status`;
+      const headers = getAuthHeaders({ 'Content-Type': 'application/json' });
+
+      fetch(endpoint, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({ status: newStatus })
       }).catch(() => {});
     } catch (e) {}

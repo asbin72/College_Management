@@ -7,7 +7,16 @@ import { Sidebar } from '../../components/portal/Sidebar';
 import { AdminAuditLogsTable } from '../../components/portal/AdminAuditLogsTable';
 import { Users, Building, BookOpen, FileText, Clock, Award, CalendarCheck, Plus, CheckCircle2, AlertCircle, Bell, ShieldCheck, X, UserCheck } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
-import { SEMESTERS } from '../../data/collegeDataGenerator';
+const SEMESTERS = [
+  { sem: 'Semester 1', year: '1st Year' },
+  { sem: 'Semester 2', year: '1st Year' },
+  { sem: 'Semester 3', year: '2nd Year' },
+  { sem: 'Semester 4', year: '2nd Year' },
+  { sem: 'Semester 5', year: '3rd Year' },
+  { sem: 'Semester 6', year: '3rd Year' },
+  { sem: 'Semester 7', year: '4th Year' },
+  { sem: 'Semester 8', year: '4th Year' }
+];
 
 export const AdminControl = () => {
   const [mobileOpen, setMobileOpen] = useState(false);

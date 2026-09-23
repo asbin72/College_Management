@@ -15,6 +15,10 @@ setInterval(() => {
   }
 }, 5 * 60 * 1000).unref();
 
+export function clearRateLimitMap() {
+  rateLimitMap.clear();
+}
+
 export function createRateLimiter({ windowMs = 15 * 60 * 1000, maxRequests = 100, message = 'Too many requests. Please try again later.' } = {}) {
   return (req, res, next) => {
     const clientIp = req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '127.0.0.1';

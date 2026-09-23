@@ -1,7 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { INITIAL_USERS } from '../data/initialMockData';
 import { getCurrentYear, getAcademicYear, generateRegisterNumber } from '../utils/idGenerator';
-import { setAuthToken, getApiBaseUrl } from '../utils/apiClient';
+import { setAuthToken, getApiBaseUrl, getAuthHeaders } from '../utils/apiClient';
 
 const AuthContext = createContext();
 
@@ -9,8 +8,32 @@ const API_BASE = getApiBaseUrl();
 
 export const AuthProvider = ({ children, users = [] }) => {
   const [currentUser, setCurrentUser] = useState(() => {
-    const saved = localStorage.getItem('kalpanaaa_auth_user');
-    return saved ? JSON.parse(saved) : null;
+    try {
+      const saved = localStorage.getItem('kalpanaaa_auth_user');
+      if (!saved) return null;
+      const user = JSON.parse(saved);
+      if (user && (user.name === 'Demo Teacher' || user.id === 'user-teacher-demo' || user.employeeId === 'EMP-100')) {
+        const migrated = {
+          ...user,
+          name: 'Dr. Sanjay Kulkarni',
+          employeeId: 'EMP-100',
+          id: user.id || 'user-teacher-demo',
+          email: user.email === 'teacher@kalpanaa.edu' || !user.email ? 'teacher@kalpanaaa.edu' : user.email,
+          designation: (user.designation && user.designation !== 'Teacher') ? user.designation : 'Senior Professor & Research Dean',
+          department: user.department || 'Computer Science & Engineering',
+          departmentCode: 'CSE',
+          qualification: 'Ph.D. in Computer Science (IIT Bombay)',
+          specialization: 'Artificial Intelligence & Neural Networks',
+          avatar: user.avatar || 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&q=80&w=300',
+          photoUrl: user.photoUrl || 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&q=80&w=300'
+        };
+        localStorage.setItem('kalpanaaa_auth_user', JSON.stringify(migrated));
+        return migrated;
+      }
+      return user;
+    } catch (e) {
+      return null;
+    }
   });
 
   const [authError, setAuthError] = useState('');
@@ -39,9 +62,7 @@ export const AuthProvider = ({ children, users = [] }) => {
       return { success: false, error: 'Identifier and password are required.' };
     }
 
-    const normalizedId = cleanId.toLowerCase();
-
-    // 1. Primary Authentication: MySQL Express REST API Server Login
+    // Server-side Authentication: MySQL Express REST API Server Login
     try {
       const response = await fetch(`${API_BASE}/auth/login`, {
         method: 'POST',
@@ -58,64 +79,21 @@ export const AuthProvider = ({ children, users = [] }) => {
         setCurrentUser(data.user);
         localStorage.setItem('kalpanaaa_auth_user', JSON.stringify(data.user));
         setSandboxState({ isPreview: false, previewRole: null, realUser: null });
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new Event('kalpanaaa_auth_changed'));
+        }
         return { success: true, user: data.user, role: data.user.role };
-      } else if (data && data.message) {
-        setAuthError(data.message);
-        return { success: false, error: data.message };
+      } else {
+        const errorMsg = (data && data.message) || 'Invalid credentials. Please verify your Email/ID and Password.';
+        setAuthError(errorMsg);
+        return { success: false, error: errorMsg };
       }
     } catch (err) {
-      console.warn('[AuthContext] Backend server unreachable. Falling back to local offline user pool:', err.message);
+      console.error('[AuthContext] Backend server unreachable:', err.message);
+      const errorMsg = 'Authentication service is unavailable. Please ensure the backend server is running.';
+      setAuthError(errorMsg);
+      return { success: false, error: errorMsg };
     }
-
-    // 2. Offline Fallback User Match (Only when backend server is completely unreachable)
-    const fullUserPool = [...(users || []), ...INITIAL_USERS];
-
-    const localUser = fullUserPool.find(u => {
-      if (!u) return false;
-      const uEmail = (u.email || '').toLowerCase();
-      const uStudentId = (u.studentId || '').toLowerCase();
-      const uEmployeeId = (u.employeeId || '').toLowerCase();
-      const uUsername = (u.username || '').toLowerCase();
-
-      const emailMatch = 
-        uEmail === normalizedId ||
-        uEmail.replace('kalpanaaa.edu', 'kalpanaa.edu') === normalizedId ||
-        uEmail.replace('kalpanaa.edu', 'kalpanaaa.edu') === normalizedId ||
-        (normalizedId === 'teacher@kalpanaaa.edu' && u.role === 'TEACHER') ||
-        (normalizedId === 'teacher@kalpanaa.edu' && u.role === 'TEACHER') ||
-        (normalizedId === 'student@kalpanaaa.edu' && u.role === 'STUDENT') ||
-        (normalizedId === 'student@kalpanaa.edu' && u.role === 'STUDENT') ||
-        (normalizedId === 'admin@kalpanaaa.edu' && u.role === 'ADMIN') ||
-        (normalizedId === 'admin@kalpanaa.edu' && u.role === 'ADMIN');
-
-      const idMatch = 
-        uStudentId === normalizedId ||
-        uEmployeeId === normalizedId ||
-        uUsername === normalizedId ||
-        (normalizedId === 'teacher' && u.role === 'TEACHER') ||
-        (normalizedId === 'student' && u.role === 'STUDENT') ||
-        (normalizedId === 'admin' && u.role === 'ADMIN');
-
-      const passMatch = 
-        password === u.password ||
-        password === 'admin123' || 
-        password === 'teacher123' || 
-        password === 'student123' ||
-        password === '123456';
-
-      return (emailMatch || idMatch) && passMatch;
-    });
-
-    if (localUser) {
-      setCurrentUser(localUser);
-      localStorage.setItem('kalpanaaa_auth_user', JSON.stringify(localUser));
-      setAuthToken(`local-dev-fallback-${localUser.id || 'usr'}`);
-      setSandboxState({ isPreview: false, previewRole: null, realUser: null });
-      return { success: true, user: localUser, role: localUser.role };
-    }
-
-    setAuthError('Invalid credentials. Please verify your Email/ID and Password.');
-    return { success: false, error: 'Invalid credentials.' };
   };
 
   // STUDENT SIGNUP
@@ -149,78 +127,12 @@ export const AuthProvider = ({ children, users = [] }) => {
         return { success: true, user: data.user };
       } else if (data && data.message) {
         return { success: false, error: data.message };
+      } else {
+        return { success: false, error: 'Registration failed. Please try again.' };
       }
     } catch (err) {
-      console.warn('Backend server signup unreachable, proceeding with local registration fallback:', err);
-    }
-
-    // Local Standalone Registration Fallback (Ensures registration always works)
-    try {
-      const cleanEmail = (studentData.email || '').trim().toLowerCase();
-      const cleanName = (studentData.name || '').trim();
-      const course = studentData.course || 'B.Tech Computer Science & Engineering';
-
-      let deptName = 'Computer Science and Engineering';
-      let deptCode = 'CSE';
-      if (course.includes('Information')) {
-        deptName = 'Information Science and Engineering';
-        deptCode = 'ISE';
-      } else if (course.includes('Electronics')) {
-        deptName = 'Electronics and Communication Engineering';
-        deptCode = 'ECE';
-      } else if (course.includes('Electrical')) {
-        deptName = 'Electrical and Electronics Engineering';
-        deptCode = 'EEE';
-      } else if (course.includes('Mechanical')) {
-        deptName = 'Mechanical Engineering';
-        deptCode = 'ME';
-      } else if (course.includes('Civil')) {
-        deptName = 'Civil Engineering';
-        deptCode = 'CE';
-      } else if (course.includes('Business') || course.includes('MBA')) {
-        deptName = 'Management Studies';
-        deptCode = 'MBA';
-      }
-
-      const uniqueNum = Math.floor(1000 + Math.random() * 9000);
-      const newStudent = {
-        id: `stu-${deptCode.toLowerCase()}-1-${uniqueNum}`,
-        name: cleanName,
-        email: cleanEmail,
-        password: studentData.password || 'student123',
-        studentId: `STU-${deptCode}-${uniqueNum}`,
-        rollNo: `24${deptCode}1${String(uniqueNum).slice(-3)}`,
-        registerNumber: generateRegisterNumber(deptCode, uniqueNum),
-        department: deptName,
-        departmentCode: deptCode,
-        course: course,
-        year: '1st Year',
-        semester: 'Semester 1',
-        section: 'Sec A',
-        academicYear: getAcademicYear(),
-        overallAttendance: '0%',
-        attendanceNum: 0,
-        gpa: '0.00',
-        pendingFees: 0,
-        phone: studentData.phone || '',
-        bio: '',
-        bloodGroup: '',
-        address: '',
-        avatar: null,
-        photoUrl: null,
-        status: 'Active',
-        role: 'STUDENT',
-        isNewUser: true
-      };
-
-      const stored = localStorage.getItem('kalpanaaa_data_users_v5');
-      const list = stored ? JSON.parse(stored) : [];
-      const updatedList = Array.isArray(list) ? [...list, newStudent] : [newStudent];
-      localStorage.setItem('kalpanaaa_data_users_v5', JSON.stringify(updatedList));
-
-      return { success: true, user: newStudent };
-    } catch (fallbackErr) {
-      return { success: false, error: 'Failed to process student registration.' };
+      console.error('Registration server error:', err.message);
+      return { success: false, error: 'Registration service is unavailable. Please ensure the backend server is running.' };
     }
   };
 
@@ -230,6 +142,9 @@ export const AuthProvider = ({ children, users = [] }) => {
     localStorage.removeItem('kalpanaaa_auth_user');
     localStorage.removeItem('kalpanaaa_sandbox_state');
     setAuthToken(null);
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new Event('kalpanaaa_auth_changed'));
+    }
   };
 
   const updateProfile = async (updatedData) => {
@@ -266,15 +181,11 @@ export const AuthProvider = ({ children, users = [] }) => {
     try {
       await fetch(`${API_BASE}/profile`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          userId: currentUser.id || currentUser.studentId || currentUser.employeeId,
-          role: currentUser.role,
-          ...updatedData
-        })
+        headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify(updatedData)
       });
     } catch (err) {
-      console.warn('Backend offline, profile saved locally in browser database:', err.message);
+      console.warn('Backend offline or profile sync error:', err.message);
     }
   };
 

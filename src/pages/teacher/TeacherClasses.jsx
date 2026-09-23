@@ -10,7 +10,7 @@ import { getEnrolledStudentCount } from '../../utils/idGenerator';
 
 export const TeacherClasses = () => {
   const { currentUser } = useAuth();
-  const { facultyClassAssignments, users = [], attendance = [] } = useData();
+  const { facultyClassAssignments = [], courses = [], subjects = [], users = [], attendance = [] } = useData();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [selectedYear, setSelectedYear] = useState('All');
   const [searchQuery, setSearchQuery] = useState('');
@@ -18,15 +18,82 @@ export const TeacherClasses = () => {
 
   if (!currentUser) return null;
 
-  const currentFacultyId = currentUser.employeeId || currentUser.username || currentUser.id || 'EMP-101';
-  const teacherName = currentUser.name || 'Faculty Member';
+  const fEmp = (currentUser.employeeId || '').toLowerCase().trim();
+  const fId = (currentUser.id || '').toLowerCase().trim();
+  const fUser = (currentUser.username || '').toLowerCase().trim();
+  const fName = (currentUser.name || '').toLowerCase().trim();
+  const fDept = (currentUser.department || '').toLowerCase().trim();
+  const isAdmin = currentUser.role === 'ADMIN';
 
   // Get active assignments for logged-in faculty
-  const myFacultyAssignments = facultyClassAssignments.filter(
-    fca => fca.facultyId === currentFacultyId || fca.facultyName === teacherName
-  );
+  const activeAssignments = React.useMemo(() => {
+    // 1. Direct class allocations from facultyClassAssignments
+    const fromFCA = (facultyClassAssignments || []).filter(fca => {
+      if (!fca) return false;
+      if (isAdmin) return true;
+      const tId = (fca.teacherId || fca.facultyId || '').toLowerCase().trim();
+      const tName = (fca.teacherName || fca.facultyName || '').toLowerCase().trim();
+      return (
+        (fEmp && (tId === fEmp || tId.includes(fEmp))) ||
+        (fId && (tId === fId || tId.includes(fId))) ||
+        (fUser && (tId === fUser || tId.includes(fUser))) ||
+        (fName && (tName === fName || tName.includes(fName) || fName.includes(tName)))
+      );
+    });
 
-  const activeAssignments = myFacultyAssignments.length > 0 ? myFacultyAssignments : facultyClassAssignments.slice(0, 3);
+    // 2. Direct curriculum courses and subjects assigned to this teacher
+    const fromCourses = (courses || subjects || []).filter(c => {
+      if (!c) return false;
+      if (isAdmin) return true;
+      const cTeacherId = (c.assignedTeacherId || '').toLowerCase().trim();
+      const cTeacherName = (c.assignedTeacherName || '').toLowerCase().trim();
+      return (
+        (fEmp && (cTeacherId === fEmp || cTeacherId.includes(fEmp))) ||
+        (fId && (cTeacherId === fId || cTeacherId.includes(fId))) ||
+        (fName && (cTeacherName === fName || cTeacherName.includes(fName) || fName.includes(cTeacherName)))
+      );
+    }).map(c => ({
+      assignmentId: `ASN-${c.code}-${c.departmentCode || 'DEPT'}`,
+      classId: `${c.departmentCode || 'DEPT'}-${(c.semester || 'SEM').toUpperCase().replace(/\s/g, '')}-A`,
+      subjectCode: c.code,
+      subjectName: c.name,
+      department: c.department,
+      departmentCode: c.departmentCode || (c.code ? c.code.split('-')[0] : 'DEPT'),
+      year: c.year || '3rd Year',
+      semester: c.semester || 'Current Semester',
+      section: 'A',
+      studentCount: 30
+    }));
+
+    // 3. Fallback: Departmental courses for this teacher
+    const fromDept = (courses || subjects || []).filter(c => {
+      if (!c || !fDept) return false;
+      const cDept = (c.department || '').toLowerCase().trim();
+      return cDept.includes(fDept) || fDept.includes(cDept);
+    }).map(c => ({
+      assignmentId: `ASN-${c.code}-${c.departmentCode || 'DEPT'}`,
+      classId: `${c.departmentCode || 'DEPT'}-${(c.semester || 'SEM').toUpperCase().replace(/\s/g, '')}-A`,
+      subjectCode: c.code,
+      subjectName: c.name,
+      department: c.department,
+      departmentCode: c.departmentCode || (c.code ? c.code.split('-')[0] : 'DEPT'),
+      year: c.year || '3rd Year',
+      semester: c.semester || 'Current Semester',
+      section: 'A',
+      studentCount: 30
+    }));
+
+    const map = new Map();
+    const primary = [...fromFCA, ...fromCourses];
+    const sourceList = primary.length > 0 ? primary : (fromDept.length > 0 ? fromDept : (facultyClassAssignments || []));
+    
+    sourceList.forEach(item => {
+      const key = `${item.subjectCode || item.code}-${item.classId || item.semester}`;
+      if (!map.has(key)) map.set(key, item);
+    });
+
+    return Array.from(map.values());
+  }, [facultyClassAssignments, courses, subjects, currentUser]);
 
   const totalStudentsCount = activeAssignments.reduce((sum, fca) => sum + getEnrolledStudentCount(fca, users), 0);
 
