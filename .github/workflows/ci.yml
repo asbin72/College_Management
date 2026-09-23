@@ -61,6 +61,7 @@ jobs:
           DB_PORT: 3306
           DB_NAME: kalpanaa_education_db_test
           JWT_SECRET: replace_with_a_secure_random_jwt_secret_in_production
+          TEST_SECRET: test_secret_ci_verification_key_123
         run: |
           node server/index.js &
           sleep 4
@@ -70,12 +71,14 @@ jobs:
         env:
           TEST_API_URL: http://127.0.0.1:5000
           JWT_SECRET: replace_with_a_secure_random_jwt_secret_in_production
+          TEST_SECRET: test_secret_ci_verification_key_123
         run: npm run test:integration
 
       - name: Run Concurrency Load Verification
         env:
           TEST_API_URL: http://127.0.0.1:5000/api
           JWT_SECRET: replace_with_a_secure_random_jwt_secret_in_production
+          TEST_SECRET: test_secret_ci_verification_key_123
         run: npm run test:load
 
   e2e-nightly:
