@@ -81,9 +81,23 @@ export const TeacherDashboard = () => {
       studentCount: 30
     }));
 
+    // 3. Fallback from direct liveSummary breakdown classes
+    const fromSummary = (liveSummary?.classesBreakdown || []).map(cb => ({
+      assignmentId: `ASN-${cb.departmentCode || 'DEPT'}-${(cb.semester || 'SEM').replace(/\s/g, '')}`,
+      classId: cb.classId || `${cb.departmentCode || 'CSE'}-${(cb.semester || 'SEM6').toUpperCase().replace(/\s/g, '')}-${cb.section || 'A'}`,
+      subjectCode: cb.subjectCode || 'CS-601',
+      subjectName: cb.subjectName || 'Artificial Intelligence & Neural Networks',
+      department: cb.department || 'Computer Science & Engineering',
+      departmentCode: cb.departmentCode || (cb.classId ? cb.classId.split('-')[0] : 'CSE'),
+      year: cb.year || '3rd Year',
+      semester: cb.semester || 'Semester 6',
+      section: cb.section || 'A',
+      studentCount: 30
+    }));
+
     // Deduplicate uniquely by subjectCode + classId
     const map = new Map();
-    [...fromFCA, ...fromCourses].forEach(item => {
+    [...fromFCA, ...fromCourses, ...fromSummary].forEach(item => {
       const key = `${item.subjectCode || item.code}-${item.classId || item.semester}`;
       if (!map.has(key)) {
         map.set(key, item);
@@ -91,7 +105,7 @@ export const TeacherDashboard = () => {
     });
 
     return Array.from(map.values());
-  }, [facultyClassAssignments, courses, subjects, currentUser]);
+  }, [facultyClassAssignments, courses, subjects, liveSummary, currentUser]);
 
   // ── Dynamic: total students across all assigned classes ───────────────────
   const totalStudentsCount = activeAssignments.reduce((acc, curr) => acc + getEnrolledStudentCount(curr, users), 0);
