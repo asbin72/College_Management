@@ -560,7 +560,7 @@ export async function initializeDatabase(customDatabaseName = null) {
     }
 
     // 2. Seed Institutional Faculty across all 7 departments
-    const [tchCount] = await connection.query('SELECT COUNT(*) as count FROM teachers WHERE employeeId != "EMP-100"');
+    const [tchCount] = await connection.query("SELECT COUNT(*) as count FROM teachers WHERE employeeId != 'EMP-100'");
     if (tchCount[0].count === 0) {
       console.log('🌱 Seeding institutional faculty across all 7 departments...');
       const facultyList = [

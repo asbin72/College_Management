@@ -160,7 +160,7 @@ app.get('/', async (req, res) => {
     const [[stu]] = await dbPool.query('SELECT count(*) as c FROM students');
     const [[tch]] = await dbPool.query('SELECT count(*) as c FROM teachers');
     const [[sub]] = await dbPool.query('SELECT count(*) as c FROM courses');
-    const [[att]] = await dbPool.query('SELECT count(*) as c FROM attendance_logs WHERE date="2026-08-15"');
+    const [[att]] = await dbPool.query("SELECT count(*) as c FROM attendance_logs WHERE date='2026-08-15'");
 
     res.send(`
       <!DOCTYPE html>
@@ -2165,8 +2165,11 @@ app.delete('/api/notifications/clear', authenticateToken, requireRole(['ADMIN', 
   }
 });
 
-app.get('/api/audit-logs', authenticateToken, requireRole(['ADMIN']), async (req, res) => {
+app.get('/api/audit-logs', authenticateToken, requireRole(['ADMIN', 'TEACHER', 'STUDENT']), async (req, res) => {
   try {
+    if (req.user?.role !== 'ADMIN') {
+      return res.json([]);
+    }
     const [rows] = await dbPool.query('SELECT * FROM audit_logs ORDER BY timestamp DESC, id DESC');
     res.json(rows);
   } catch (err) {
