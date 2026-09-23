@@ -24,15 +24,20 @@ if (!process.env.JWT_SECRET) {
 }
 const JWT_SECRET = process.env.JWT_SECRET;
 
-// Explicit CORS Allowlist (No wildcard / reflect-any-origin with credentials)
-const rawFrontendUrls = process.env.FRONTEND_URL || 'http://localhost:3000,http://127.0.0.1:3000';
+// Explicit CORS Allowlist with dynamic local and production domain support
+const rawFrontendUrls = process.env.FRONTEND_URL || 'http://localhost:3000,http://localhost:5173,http://127.0.0.1:3000,http://127.0.0.1:5173';
 const allowedOrigins = rawFrontendUrls.split(',').map(u => u.trim().replace(/\/$/, '')).filter(Boolean);
 
 app.use(cors({
   origin: (origin, callback) => {
     // Allow non-browser requests (e.g. server-to-server, curl, integration tests) without origin header
     if (!origin) return callback(null, true);
-    if (allowedOrigins.includes(origin)) {
+    if (
+      allowedOrigins.includes('*') ||
+      allowedOrigins.includes(origin) ||
+      /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin) ||
+      /^https:\/\/.*\.vercel\.app$/.test(origin)
+    ) {
       return callback(null, true);
     }
     return callback(new Error(`CORS policy violation: origin ${origin} is not allowed by explicit allowlist.`));

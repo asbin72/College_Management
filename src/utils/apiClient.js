@@ -13,11 +13,11 @@ export const getApiBaseUrl = () => {
   if (typeof window !== 'undefined' && window.location) {
     const { protocol, hostname } = window.location;
     if (hostname === 'localhost' || hostname === '127.0.0.1') {
-      return `${protocol}//${hostname}:3000/api`;
+      return `${protocol}//${hostname}:5000/api`;
     }
     return `${window.location.origin}/api`;
   }
-  return 'http://localhost:3000/api';
+  return 'http://localhost:5000/api';
 };
 
 /**
