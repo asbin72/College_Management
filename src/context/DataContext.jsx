@@ -309,20 +309,30 @@ export const DataProvider = ({ children }) => {
 
         // 2. Fetch authenticated datasets ONLY if auth token is present
         if (token) {
+          const safeFetch = (endpoint) => fetch(`${API_BASE}${endpoint}`, { headers })
+            .then(r => {
+              if (r.status === 401) {
+                setAuthToken(null);
+                return [];
+              }
+              return r.ok ? r.json() : [];
+            })
+            .catch(() => []);
+
           const [stdRes, tchRes, hlpRes, levRes, fcaRes, exmRes, mrkRes, attRes, tAttRes, notifRes, adtRes, asnRes, feeRes] = await Promise.allSettled([
-            fetch(`${API_BASE}/students`, { headers }).then(r => r.ok ? r.json() : Promise.reject(r.status)),
-            fetch(`${API_BASE}/teachers`, { headers }).then(r => r.ok ? r.json() : Promise.reject(r.status)),
-            fetch(`${API_BASE}/helpdesk`, { headers }).then(r => r.ok ? r.json() : Promise.reject(r.status)),
-            fetch(`${API_BASE}/leave-requests`, { headers }).then(r => r.ok ? r.json() : Promise.reject(r.status)),
-            fetch(`${API_BASE}/faculty-assignments`, { headers }).then(r => r.ok ? r.json() : Promise.reject(r.status)),
-            fetch(`${API_BASE}/examinations`, { headers }).then(r => r.ok ? r.json() : Promise.reject(r.status)),
-            fetch(`${API_BASE}/marks`, { headers }).then(r => r.ok ? r.json() : Promise.reject(r.status)),
-            fetch(`${API_BASE}/attendance`, { headers }).then(r => r.ok ? r.json() : Promise.reject(r.status)),
-            fetch(`${API_BASE}/teacher-attendance`, { headers }).then(r => r.ok ? r.json() : Promise.reject(r.status)),
-            fetch(`${API_BASE}/notifications`, { headers }).then(r => r.ok ? r.json() : Promise.reject(r.status)),
-            fetch(`${API_BASE}/audit-logs`, { headers }).then(r => r.ok ? r.json() : Promise.reject(r.status)),
-            fetch(`${API_BASE}/assignments`, { headers }).then(r => r.ok ? r.json() : Promise.reject(r.status)),
-            fetch(`${API_BASE}/fees`, { headers }).then(r => r.ok ? r.json() : Promise.reject(r.status))
+            safeFetch('/students'),
+            safeFetch('/teachers'),
+            safeFetch('/helpdesk'),
+            safeFetch('/leave-requests'),
+            safeFetch('/faculty-assignments'),
+            safeFetch('/examinations'),
+            safeFetch('/marks'),
+            safeFetch('/attendance'),
+            safeFetch('/teacher-attendance'),
+            safeFetch('/notifications'),
+            safeFetch('/audit-logs'),
+            safeFetch('/assignments'),
+            safeFetch('/fees')
           ]);
 
           const anyBackendSuccess = [stdRes, tchRes, subRes, dptRes, crsRes, hlpRes, annRes, levRes, fcaRes, exmRes, mrkRes, attRes, tAttRes, notifRes, adtRes, asnRes, feeRes].some(r => r.status === 'fulfilled');
