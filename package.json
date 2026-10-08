@@ -1,58 +1,19 @@
 {
-  "name": "kalpanaa-education",
-  "private": true,
+  "name": "kalpanaaa-education-monorepo",
   "version": "1.0.0",
-  "main": "index.js",
-  "type": "module",
-  "allowScripts": {
-    "esbuild": true
-  },
-  "overrides": {
-    "vite": "^6.0.0"
-  },
+  "private": true,
+  "description": "Kalpanaaa Education Management Information System (Spring Boot 3 + React TS)",
+  "workspaces": [
+    "frontend"
+  ],
   "scripts": {
-    "dev": "vite",
-    "start": "node index.js",
-    "start:client": "vite",
-    "start:server": "node server/index.js",
-    "db:clear": "node scripts/clear_all_demo_data.js",
-    "build": "vite build",
-    "lint": "eslint .",
-    "test": "vite build",
-    "test:unit": "node -e \"console.log('✅ Unit Tests Passed')\"",
-    "test:integration": "node -e \"console.log('✅ Integration Tests Passed')\"",
-    "test:load": "node -e \"console.log('✅ Load Tests Passed')\"",
-    "test:e2e": "node -e \"console.log('✅ E2E Tests Passed')\"",
-    "preview": "vite preview"
-  },
-  "dependencies": {
-    "bcryptjs": "^2.4.3",
-    "cors": "^2.8.5",
-    "dotenv": "^16.4.5",
-    "express": "^4.19.2",
-    "jsonwebtoken": "^9.0.2",
-    "lucide-react": "^0.439.0",
-    "mysql2": "^3.9.8",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
-    "react-router-dom": "^6.26.1",
-    "vite": "^6.0.0",
-    "ws": "^8.18.0"
-  },
-  "devDependencies": {
-    "@eslint/js": "^10.0.1",
-    "@types/react": "^18.3.3",
-    "@types/react-dom": "^18.3.0",
-    "@vitejs/plugin-react": "^4.3.1",
-    "autoprefixer": "^10.4.20",
-    "esbuild": "^0.21.5",
-    "eslint": "^10.9.0",
-    "eslint-plugin-react": "^7.37.5",
-    "eslint-plugin-react-hooks": "^7.1.1",
-    "postcss": "^8.4.45",
-    "tailwindcss": "^3.4.10"
-  },
-  "optionalDependencies": {
-    "@esbuild/linux-x64": "^0.21.5"
+    "start:backend": "cd backend && mvn spring-boot:run",
+    "start:backend:mysql": "cd backend && mvn spring-boot:run -Dspring-boot.run.profiles=mysql",
+    "build:backend": "cd backend && mvn clean package -DskipTests",
+    "install:frontend": "cd frontend && npm install",
+    "start:frontend": "cd frontend && npm run dev",
+    "build:frontend": "cd frontend && npm run build",
+    "dev": "npm run start:frontend",
+    "build": "npm run build:frontend"
   }
 }

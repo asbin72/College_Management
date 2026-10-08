@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 50" width="120" height="34">
+  <!-- Adobe Red 'A' Emblem -->
+  <path d="M0 4h18.5L34 46H23.5L17.5 30H7.5l7 16H0V4zm18.5 0H37v42H18.5V4zm-3 20h7.5L18.5 8.5 15.5 24z" fill="#FF0000"/>
+  <!-- Adobe Text in White -->
+  <text x="46" y="34" fill="#FFFFFF" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="26" font-weight="700" letter-spacing="0.5px">Adobe</text>
+</svg>
