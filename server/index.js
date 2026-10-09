@@ -1,0 +1,2704 @@
+import 'dotenv/config';
+import express from 'express';
+import cors from 'cors';
+import mysql from 'mysql2/promise';
+import jwt from 'jsonwebtoken';
+import bcrypt from 'bcryptjs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import { initializeDatabase } from './init_db.js';
+import { globalErrorHandler, asyncHandler, AppError } from './middleware/errorHandler.js';
+import { authRateLimiter, publicApiRateLimiter, clearRateLimitMap } from './middleware/rateLimiter.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const distPath = path.join(__dirname, '../dist');
+
+const app = express();
+const PORT = process.env.PORT || process.env.RAILWAY_PORT || 5000;
+
+// Mandatory JWT_SECRET verification (refuse startup if missing)
+if (!process.env.JWT_SECRET) {
+  console.error('❌ FATAL ERROR: JWT_SECRET environment variable is missing.');
+  throw new Error('JWT_SECRET environment variable must be explicitly defined. The server refuses to start with an insecure default.');
+}
+const JWT_SECRET = process.env.JWT_SECRET;
+
+// Universal Dynamic CORS Middleware (Supports all Vercel previews, custom domains, and localhost)
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (origin) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, x-test-secret, Cache-Control, Accept');
+  }
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(204);
+  }
+  next();
+});
+
+app.use(cors({
+  origin: true,
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'x-test-secret', 'Cache-Control', 'Accept']
+}));
+app.options('*', cors());
+app.use(express.json({ limit: '10mb' }));
+
+// Test-Mode Rate Limit Reset: Strictly gated to non-production environments and requires explicit TEST_SECRET
+const isProductionDeployment = process.env.NODE_ENV === 'production' || !!process.env.VERCEL || !!process.env.RAILWAY_ENVIRONMENT;
+
+if (!isProductionDeployment && (process.env.NODE_ENV === 'test' || process.env.ENABLE_TEST_RESET === 'true')) {
+  if (!process.env.TEST_SECRET) {
+    if (process.env.NODE_ENV === 'test') {
+      console.error('❌ FATAL ERROR: TEST_SECRET environment variable is missing.');
+      throw new Error('TEST_SECRET environment variable must be explicitly defined when running tests. The server refuses to start or register test reset routes with an insecure default.');
+    } else {
+      console.warn('⚠️ WARNING: TEST_SECRET not defined; /api/test/reset-rate-limit endpoint will NOT be registered.');
+    }
+  } else {
+    app.post('/api/test/reset-rate-limit', (req, res) => {
+      if (process.env.NODE_ENV === 'production' || isProductionDeployment) {
+        return res.status(404).json({ success: false, message: 'Not Found' });
+      }
+      const testSecret = req.headers['x-test-secret'];
+      const expectedSecret = process.env.TEST_SECRET;
+      if (!expectedSecret || !testSecret || testSecret !== expectedSecret) {
+        return res.status(403).json({ success: false, message: 'Forbidden: Invalid or missing test secret header.' });
+      }
+      clearRateLimitMap();
+      return res.json({ success: true, message: 'Rate limits cleared for test environment.' });
+    });
+  }
+}
+
+// Health Check Endpoint for zero-downtime deploy monitoring
+app.get(['/health', '/api/health'], async (req, res) => {
+  try {
+    const connection = await dbPool.getConnection();
+    await connection.query('SELECT 1');
+    connection.release();
+    res.json({
+      status: 'ok',
+      service: 'Kalpanaaa Education Enterprise API',
+      timestamp: new Date().toISOString(),
+      uptime: process.uptime(),
+      database: 'connected'
+    });
+  } catch (err) {
+    res.status(500).json({
+      status: 'error',
+      service: 'Kalpanaaa Education Enterprise API',
+      timestamp: new Date().toISOString(),
+      database: 'disconnected',
+      error: err.message
+    });
+  }
+});
+
+// MySQL Connection Pool — supports MYSQL_URL, Railway env vars, and localhost fallback
+const getDbConfig = () => {
+  let connectionUrl = process.env.MYSQL_URL || process.env.DATABASE_URL || process.env.MYSQL_PRIVATE_URL;
+  if (connectionUrl) {
+    if (connectionUrl.includes('${{')) {
+      connectionUrl = null;
+    } else {
+      try {
+        new URL(connectionUrl);
+      } catch (e) {
+        connectionUrl = null;
+      }
+    }
+  }
+  if (connectionUrl) {
+    return {
+      uri: connectionUrl,
+      waitForConnections: true,
+      connectionLimit: 10,
+      queueLimit: 0,
+      ssl: { rejectUnauthorized: false }
+    };
+  }
+  const host = process.env.MYSQLPUBLICHOST || process.env.MYSQLHOST || process.env.DB_HOST;
+  const user = process.env.MYSQLUSER || process.env.DB_USER;
+  const password = process.env.MYSQLPASSWORD || process.env.DB_PASSWORD;
+  const database = process.env.MYSQLDATABASE || process.env.DB_NAME;
+
+  if (!host || !user || !database) {
+    console.error('❌ FATAL ERROR: Database configuration missing. Please specify MYSQL_URL or DB_HOST, DB_USER, DB_NAME environment variables.');
+    process.exit(1);
+  }
+
+  return {
+    host,
+    user,
+    password: password || '',
+    database,
+    port: parseInt(process.env.MYSQLPUBLICPORT || process.env.MYSQLPORT || process.env.DB_PORT || '3306'),
+    waitForConnections: true,
+    connectionLimit: 10,
+    queueLimit: 0,
+    ssl: (process.env.MYSQLHOST || process.env.MYSQLPUBLICHOST) ? { rejectUnauthorized: false } : undefined
+  };
+};
+
+const dbPool = mysql.createPool(getDbConfig());
+
+// Initialize DB schema and seed on startup
+initializeDatabase().then(() => {
+  console.log('🚀 Kalpanaaa Enterprise REST API & Real-Time Sync Engine ready.');
+}).catch((err) => {
+  console.error('Failed to initialize DB:', err);
+});
+
+// Root API Landing Page & Status Console
+app.get('/', async (req, res) => {
+  try {
+    const [[stu]] = await dbPool.query('SELECT count(*) as c FROM students');
+    const [[tch]] = await dbPool.query('SELECT count(*) as c FROM teachers');
+    const [[sub]] = await dbPool.query('SELECT count(*) as c FROM courses');
+    const [[att]] = await dbPool.query("SELECT count(*) as c FROM attendance_logs WHERE date='2026-08-15'");
+
+    res.send(`
+      <!DOCTYPE html>
+      <html lang="en">
+      <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Kalpanaaa Enterprise API Server</title>
+        <style>
+          body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0b132b; color: #f8fafc; margin: 0; padding: 40px 20px; display: flex; justify-content: center; align-items: center; min-height: 100vh; box-sizing: border-box; }
+          .card { background: #1c2541; border: 1px solid #3a506b; border-radius: 16px; max-width: 650px; width: 100%; padding: 32px; box-shadow: 0 10px 25px rgba(0,0,0,0.5); }
+          .badge { display: inline-block; background: rgba(245, 158, 11, 0.15); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.3); font-size: 11px; font-weight: 700; padding: 4px 10px; border-radius: 6px; text-transform: uppercase; letter-spacing: 1px; }
+          h1 { color: #f8fafc; font-size: 24px; margin: 12px 0 6px; }
+          p { color: #94a3b8; font-size: 14px; margin: 0 0 24px; }
+          .grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 24px; }
+          .stat { background: #0b132b; border: 1px solid #3a506b; border-radius: 10px; padding: 14px; }
+          .stat-label { font-size: 11px; color: #64748b; font-weight: 700; text-transform: uppercase; }
+          .stat-val { font-size: 22px; font-weight: 700; color: #38bdf8; margin-top: 2px; }
+          .status { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #34d399; margin-bottom: 24px; font-weight: 600; }
+          .status-dot { width: 10px; height: 10px; background: #34d399; border-radius: 50%; box-shadow: 0 0 10px #34d399; }
+          .btn { display: inline-block; background: #fbbf24; color: #0b132b; text-decoration: none; font-weight: 700; font-size: 13px; padding: 12px 24px; border-radius: 10px; text-align: center; text-transform: uppercase; letter-spacing: 0.5px; transition: 0.2s; }
+          .btn:hover { background: #f59e0b; }
+          .endpoints { font-size: 11px; color: #64748b; margin-top: 20px; border-top: 1px solid #3a506b; padding-top: 16px; }
+          .endpoints code { color: #38bdf8; background: #0b132b; padding: 2px 6px; border-radius: 4px; }
+        </style>
+      </head>
+      <body>
+        <div class="card">
+          <span class="badge">Enterprise Backend &bull; REST API Server</span>
+          <h1>Kalpanaaa Education API Engine</h1>
+          <p>The backend REST API server is running live and connected to MySQL database <strong>kalpanaaa_education_db</strong>.</p>
+          
+          <div class="status">
+            <span class="status-dot"></span> MySQL Database Connected &bull; Real-Time SSE Hub Active
+          </div>
+
+          <div class="grid">
+            <div class="stat">
+              <div class="stat-label">Enrolled Students</div>
+              <div class="stat-val">${stu.c}</div>
+            </div>
+            <div class="stat">
+              <div class="stat-label">Verified Faculty</div>
+              <div class="stat-val">${tch.c}</div>
+            </div>
+            <div class="stat">
+              <div class="stat-label">Active Subjects</div>
+              <div class="stat-val">${sub.c}</div>
+            </div>
+            <div class="stat">
+              <div class="stat-label">Today Attendance Logs</div>
+              <div class="stat-val">${att.c}</div>
+            </div>
+          </div>
+
+          <a href="http://localhost:3000" class="btn">🚀 Open Web Application Portal (http://localhost:3000)</a>
+
+          <div class="endpoints">
+            <strong>Active REST Endpoints:</strong> <code>/api/students</code> &bull; <code>/api/teachers</code> &bull; <code>/api/attendance</code> &bull; <code>/api/teacher-attendance</code> &bull; <code>/api/examinations</code> &bull; <code>/api/marks</code> &bull; <code>/api/leave-requests</code> &bull; <code>/api/events</code>
+          </div>
+        </div>
+      </body>
+      </html>
+    `);
+  } catch (err) {
+    res.json({ status: 'running', service: 'Kalpanaaa Backend API', db: 'connecting', port: PORT });
+  }
+});
+
+// -------------------------------------------------------------
+// 0. SERVER-SENT EVENTS (SSE) REAL-TIME BROADCAST ENGINE
+// -------------------------------------------------------------
+let sseClients = [];
+
+app.get('/api/events', (req, res) => {
+  const origin = req.headers.origin || '*';
+  res.setHeader('Access-Control-Allow-Origin', origin);
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
+  res.setHeader('Access-Control-Allow-Headers', 'Cache-Control, Content-Type, Authorization, X-Requested-With');
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache, no-transform');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
+  res.flushHeaders();
+
+  const clientId = `client-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  const newClient = { id: clientId, res };
+  sseClients.push(newClient);
+
+  console.log(`📡 New Real-Time SSE Client Connected: ${clientId} (Total: ${sseClients.length})`);
+
+  // Send initial handshake
+  res.write(`data: ${JSON.stringify({ type: 'HANDSHAKE', message: 'Connected to Kalpanaaa Real-Time Event Hub' })}\n\n`);
+
+  req.on('close', () => {
+    sseClients = sseClients.filter(c => c.id !== clientId);
+    console.log(`📡 SSE Client Disconnected: ${clientId} (Remaining: ${sseClients.length})`);
+  });
+});
+
+// Periodic heartbeat to prevent HTTP/2 protocol errors & connection dropouts on Railway/Vercel proxies
+setInterval(() => {
+  sseClients.forEach(client => {
+    try {
+      client.res.write(': ping\n\n');
+    } catch (e) {
+      // Ignore write errors; client disconnect handler will clean up
+    }
+  });
+}, 15000);
+
+// Global Event Dispatcher (Broadcasts live changes to all connected browsers/devices)
+function broadcastRealTimeEvent(eventType, payload) {
+  const eventMessage = JSON.stringify({ type: eventType, payload, timestamp: new Date().toISOString() });
+  sseClients.forEach(client => {
+    try {
+      client.res.write(`data: ${eventMessage}\n\n`);
+    } catch (e) {
+      console.warn(`Failed to send event to client ${client.id}:`, e.message);
+    }
+  });
+}
+
+// -------------------------------------------------------------
+// 1. JWT AUTHENTICATION & RBAC SECURITY MIDDLEWARES
+// -------------------------------------------------------------
+function authenticateToken(req, res, next) {
+  const authHeader = req.headers.authorization;
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    const token = authHeader.split(' ')[1];
+    jwt.verify(token, JWT_SECRET, (err, decoded) => {
+      if (err) {
+        return res.status(401).json({ success: false, message: 'Invalid or expired session token.' });
+      }
+      req.user = decoded;
+      next();
+    });
+  } else {
+    return res.status(401).json({ success: false, message: 'Authentication required. Please log in.' });
+  }
+}
+
+const authenticateJWT = authenticateToken;
+
+function requireRole(allowedRoles = []) {
+  return (req, res, next) => {
+    if (!req.user) {
+      return res.status(401).json({ success: false, message: 'Authentication required. Please log in.' });
+    }
+    const userRole = req.user.role;
+    const isAllowed = allowedRoles.includes(userRole) ||
+      (allowedRoles.includes('TEACHER') && userRole === 'STAFF') ||
+      (allowedRoles.includes('STAFF') && userRole === 'TEACHER');
+    if (!isAllowed) {
+      return res.status(403).json({ 
+        success: false, 
+        message: `Forbidden: Access restricted to [${allowedRoles.join(', ')}]. Your role: ${userRole}` 
+      });
+    }
+    next();
+  };
+}
+
+// -------------------------------------------------------------
+// 2. AUTHENTICATION ENDPOINTS
+// -------------------------------------------------------------
+const PASSWORD_MIGRATION_QUERIES = {
+  admins: 'UPDATE admins SET password = ? WHERE id = ?',
+  teachers: 'UPDATE teachers SET password = ? WHERE id = ?',
+  students: 'UPDATE students SET password = ? WHERE id = ?'
+};
+
+async function verifyAndMigratePassword(inputPassword, storedPassword, tableName, rowId) {
+  if (!storedPassword) return false;
+  let isValid = false;
+  if (storedPassword.startsWith('$2a$') || storedPassword.startsWith('$2b$')) {
+    isValid = await bcrypt.compare(inputPassword, storedPassword);
+  } else {
+    isValid = (inputPassword === storedPassword);
+    if (isValid) {
+      try {
+        const updateQuery = PASSWORD_MIGRATION_QUERIES[tableName];
+        if (updateQuery) {
+          const hashed = await bcrypt.hash(inputPassword, 10);
+          await dbPool.query(updateQuery, [hashed, rowId]);
+        } else {
+          console.error(`Invalid table name for password migration: ${tableName}`);
+        }
+      } catch (e) {
+        console.error(`Failed to migrate password hash for ${tableName} ${rowId}:`, e);
+      }
+    }
+  }
+  return isValid;
+}
+
+app.post('/api/auth/login', authRateLimiter, async (req, res) => {
+  const { identifier, email, username, password } = req.body;
+  const rawId = identifier || email || username;
+  if (!rawId || !password) {
+    return res.status(400).json({ success: false, message: 'Identifier and password are required.' });
+  }
+
+  const cleanId = (rawId || '').trim();
+  const normalizedId = cleanId.toLowerCase();
+
+  let altDomainId = normalizedId;
+  if (normalizedId.includes('@kalpanaaa.edu')) {
+    altDomainId = normalizedId.replace('@kalpanaaa.edu', '@kalpanaa.edu');
+  } else if (normalizedId.includes('@kalpanaa.edu')) {
+    altDomainId = normalizedId.replace('@kalpanaa.edu', '@kalpanaaa.edu');
+  }
+
+  try {
+    // 1. Check Admins
+    const [admRows] = await dbPool.query(
+      `SELECT * FROM admins 
+       WHERE (LOWER(email) = ? OR LOWER(email) = ? OR employeeId = ? OR id = ?) 
+       LIMIT 1`,
+      [normalizedId, altDomainId, cleanId, cleanId]
+    );
+
+    if (admRows.length > 0) {
+      const u = admRows[0];
+      const isValid = await verifyAndMigratePassword(password, u.password, 'admins', u.id);
+      if (isValid) {
+        const token = jwt.sign(
+          { id: u.id, name: u.name, email: u.email, role: 'ADMIN', employeeId: u.employeeId },
+          JWT_SECRET,
+          { expiresIn: '7d' }
+        );
+        const { password: _, ...userWithoutPass } = u;
+        return res.json({
+          success: true,
+          token,
+          user: { ...userWithoutPass, role: 'ADMIN' }
+        });
+      }
+    }
+
+    // 2. Check Teachers (Staff)
+    const [tchRows] = await dbPool.query(
+      `SELECT * FROM teachers 
+       WHERE (LOWER(email) = ? OR LOWER(email) = ? OR employeeId = ? OR id = ? OR (? IN ('teacher@kalpanaaa.edu', 'teacher@kalpanaa.edu') AND id = 'fac-cse-01')) 
+       LIMIT 1`,
+      [normalizedId, altDomainId, cleanId, cleanId, normalizedId]
+    );
+
+    if (tchRows.length > 0) {
+      const u = tchRows[0];
+      const isValid = await verifyAndMigratePassword(password, u.password, 'teachers', u.id);
+      if (isValid) {
+        const token = jwt.sign(
+          { id: u.id, name: u.name, email: u.email, role: 'TEACHER', employeeId: u.employeeId },
+          JWT_SECRET,
+          { expiresIn: '7d' }
+        );
+        const { password: _, ...userWithoutPass } = u;
+        return res.json({
+          success: true,
+          token,
+          user: { ...userWithoutPass, role: 'TEACHER' }
+        });
+      }
+    }
+
+    // 3. Check Students
+    const [stdRows] = await dbPool.query(
+      `SELECT * FROM students 
+       WHERE (LOWER(email) = ? OR LOWER(email) = ? OR studentId = ? OR rollNo = ? OR registerNumber = ? OR id = ?) 
+       LIMIT 1`,
+      [normalizedId, altDomainId, cleanId, cleanId, cleanId, cleanId]
+    );
+
+    if (stdRows.length > 0) {
+      const u = stdRows[0];
+      const isValid = await verifyAndMigratePassword(password, u.password, 'students', u.id);
+      if (isValid) {
+        const token = jwt.sign(
+          { id: u.id, name: u.name, email: u.email, role: 'STUDENT', studentId: u.studentId },
+          JWT_SECRET,
+          { expiresIn: '7d' }
+        );
+        const { password: _, ...userWithoutPass } = u;
+        return res.json({
+          success: true,
+          token,
+          user: { ...userWithoutPass, role: 'STUDENT' }
+        });
+      }
+    }
+
+    return res.status(401).json({ success: false, message: 'Invalid credentials. User not found or incorrect password.' });
+  } catch (err) {
+    console.error('Login error:', err);
+    return res.status(500).json({ success: false, message: 'Internal server error during login.' });
+  }
+});
+
+app.post('/api/auth/student-signup', authRateLimiter, async (req, res) => {
+  const { name, email, password, phone, course } = req.body;
+  if (!email || !name || !password) {
+    return res.status(400).json({ success: false, message: 'Name, email, and password are required.' });
+  }
+
+  const cleanEmail = email.trim().toLowerCase();
+  const cleanName = name.trim();
+  const cleanPass = password.trim();
+
+  try {
+    // Check if student with this email already exists
+    const [existing] = await dbPool.query(
+      'SELECT id, email, studentId FROM students WHERE LOWER(email) = ?',
+      [cleanEmail]
+    );
+
+    if (existing.length > 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'An account with this email already exists. Please log in.'
+      });
+    }
+
+    // Determine department and department code from selected course
+    let deptName = 'Computer Science and Engineering';
+    let deptCode = 'CSE';
+    const c = course || 'B.Tech Computer Science & Engineering';
+
+    if (c.includes('Information')) {
+      deptName = 'Information Science and Engineering';
+      deptCode = 'ISE';
+    } else if (c.includes('Electronics')) {
+      deptName = 'Electronics and Communication Engineering';
+      deptCode = 'ECE';
+    } else if (c.includes('Electrical')) {
+      deptName = 'Electrical and Electronics Engineering';
+      deptCode = 'EEE';
+    } else if (c.includes('Mechanical')) {
+      deptName = 'Mechanical Engineering';
+      deptCode = 'ME';
+    } else if (c.includes('Civil')) {
+      deptName = 'Civil Engineering';
+      deptCode = 'CE';
+    } else if (c.includes('Business') || c.includes('MBA')) {
+      deptName = 'Management Studies';
+      deptCode = 'MBA';
+    }
+
+    let id, studentId, rollNo, regNo;
+    let attempts = 0;
+    let isUnique = false;
+
+    while (!isUnique && attempts < 10) {
+      attempts++;
+      const uniqueNum = Math.floor(1000 + Math.random() * 9000);
+      const candidateId = `stu-${deptCode.toLowerCase()}-1-${uniqueNum}`;
+      const candidateStudentId = `STU-${deptCode}-${uniqueNum}`;
+      const candidateRollNo = `24${deptCode}1${String(uniqueNum).slice(-3)}`;
+      const candidateRegNo = `REG-2026-${deptCode}-${uniqueNum}`;
+
+      const [conflicts] = await dbPool.query(
+        'SELECT id FROM students WHERE id = ? OR studentId = ? OR rollNo = ? OR registerNumber = ? LIMIT 1',
+        [candidateId, candidateStudentId, candidateRollNo, candidateRegNo]
+      );
+
+      if (conflicts.length === 0) {
+        id = candidateId;
+        studentId = candidateStudentId;
+        rollNo = candidateRollNo;
+        regNo = candidateRegNo;
+        isUnique = true;
+      }
+    }
+
+    if (!isUnique) {
+      const entropy = Date.now().toString().slice(-6);
+      id = `stu-${deptCode.toLowerCase()}-1-${entropy}`;
+      studentId = `STU-${deptCode}-${entropy}`;
+      rollNo = `24${deptCode}1${entropy.slice(-3)}`;
+      regNo = `REG-2026-${deptCode}-${entropy}`;
+    }
+
+    const hashedPassword = await bcrypt.hash(cleanPass, 10);
+
+    const newStudent = {
+      id,
+      name: cleanName,
+      email: cleanEmail,
+      password: hashedPassword,
+      studentId,
+      rollNo,
+      registerNumber: regNo,
+      department: deptName,
+      departmentCode: deptCode,
+      course: c,
+      year: '1st Year',
+      semester: 'Semester 1',
+      section: 'Sec A',
+      academicYear: '2026-2027',
+      overallAttendance: '0%',
+      attendanceNum: 0,
+      gpa: '0.00',
+      pendingFees: 0,
+      phone: phone || '',
+      bio: '',
+      bloodGroup: '',
+      address: '',
+      guardianName: '',
+      guardianPhone: '',
+      avatar: null,
+      photoUrl: null,
+      status: 'Active',
+      role: 'STUDENT',
+      isNewUser: true
+    };
+
+    await dbPool.query(`
+      INSERT INTO students (
+        id, name, email, password, studentId, rollNo, registerNumber,
+        department, departmentCode, course, year, semester, section,
+        academicYear, overallAttendance, attendanceNum, gpa, pendingFees,
+        phone, bio, bloodGroup, address, guardianName, guardianPhone,
+        avatar, photoUrl, status
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `, [
+      newStudent.id, newStudent.name, newStudent.email, newStudent.password, newStudent.studentId,
+      newStudent.rollNo, newStudent.registerNumber, newStudent.department, newStudent.departmentCode,
+      newStudent.course, newStudent.year, newStudent.semester, newStudent.section,
+      newStudent.academicYear, newStudent.overallAttendance, newStudent.attendanceNum,
+      newStudent.gpa, newStudent.pendingFees, newStudent.phone, newStudent.bio,
+      newStudent.bloodGroup, newStudent.address, newStudent.guardianName, newStudent.guardianPhone,
+      newStudent.avatar, newStudent.photoUrl, newStudent.status
+    ]);
+
+    broadcastRealTimeEvent('STUDENT_ADDED', { id: newStudent.id, studentId: newStudent.studentId, name: newStudent.name });
+
+    const token = jwt.sign(
+      { id: newStudent.id, name: newStudent.name, email: newStudent.email, role: 'STUDENT', studentId: newStudent.studentId },
+      JWT_SECRET,
+      { expiresIn: '7d' }
+    );
+
+    res.status(201).json({
+      success: true,
+      token,
+      user: newStudent,
+      message: 'Student account created successfully in MySQL database.'
+    });
+
+  } catch (err) {
+    console.error('Signup error:', err);
+    res.status(500).json({ success: false, message: err.message || 'Database error during signup.' });
+  }
+});
+
+// -------------------------------------------------------------
+// 3. PROFILE & USER MANAGEMENT ENDPOINTS
+// -------------------------------------------------------------
+app.put('/api/profile', authenticateToken, async (req, res) => {
+  const { name, phone, bio, bloodGroup, address, guardianName, guardianPhone, designation, specialization, avatar, photoUrl, image } = req.body;
+  const photo = avatar || photoUrl || image || null;
+  const authUserId = req.user.id;
+  const authRole = req.user.role;
+  const authEmail = req.user.email || '';
+  const authStudentId = req.user.studentId || authUserId;
+  const authEmployeeId = req.user.employeeId || authUserId;
+
+  try {
+    if (authRole === 'STUDENT') {
+      await dbPool.query(
+        `UPDATE students 
+         SET name = COALESCE(?, name), phone = COALESCE(?, phone), bio = COALESCE(?, bio),
+             bloodGroup = COALESCE(?, bloodGroup), address = COALESCE(?, address),
+             guardianName = COALESCE(?, guardianName), guardianPhone = COALESCE(?, guardianPhone),
+             avatar = COALESCE(?, avatar), photoUrl = COALESCE(?, photoUrl)
+         WHERE id = ? OR studentId = ? OR email = ?`,
+        [name, phone, bio, bloodGroup, address, guardianName, guardianPhone, photo, photo, authUserId, authStudentId, authEmail]
+      );
+    } else if (authRole === 'TEACHER' || authRole === 'STAFF') {
+      await dbPool.query(
+        `UPDATE teachers 
+         SET name = COALESCE(?, name), phone = COALESCE(?, phone), bio = COALESCE(?, bio),
+             designation = COALESCE(?, designation), specialization = COALESCE(?, specialization),
+             avatar = COALESCE(?, avatar), photoUrl = COALESCE(?, photoUrl)
+         WHERE id = ? OR employeeId = ? OR email = ?`,
+        [name, phone, bio, designation, specialization, photo, photo, authUserId, authEmployeeId, authEmail]
+      );
+    } else if (authRole === 'ADMIN') {
+      await dbPool.query(
+        `UPDATE admins 
+         SET name = COALESCE(?, name), phone = COALESCE(?, phone),
+             designation = COALESCE(?, designation), avatar = COALESCE(?, avatar), photoUrl = COALESCE(?, photoUrl)
+         WHERE id = ? OR employeeId = ? OR email = ?`,
+        [name, phone, designation, photo, photo, authUserId, authEmployeeId, authEmail]
+      );
+    }
+
+    broadcastRealTimeEvent('USER_PROFILE_UPDATED', { userId: authUserId, role: authRole, name, photo });
+    res.json({ success: true, message: 'Profile updated in MySQL database and broadcast to real-time stream.' });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Admin-only profile modification route to edit any user's profile
+app.put('/api/admin/users/:role/:id/profile', authenticateToken, requireRole(['ADMIN']), async (req, res) => {
+  const { role, id } = req.params;
+  const targetRole = (role || '').toUpperCase();
+  const { name, phone, bio, bloodGroup, address, guardianName, guardianPhone, designation, specialization, avatar, photoUrl, image } = req.body;
+  const photo = avatar || photoUrl || image || null;
+  const targetId = (id || '').trim();
+
+  try {
+    if (targetRole === 'STUDENT') {
+      await dbPool.query(
+        `UPDATE students 
+         SET name = COALESCE(?, name), phone = COALESCE(?, phone), bio = COALESCE(?, bio),
+             bloodGroup = COALESCE(?, bloodGroup), address = COALESCE(?, address),
+             guardianName = COALESCE(?, guardianName), guardianPhone = COALESCE(?, guardianPhone),
+             avatar = COALESCE(?, avatar), photoUrl = COALESCE(?, photoUrl)
+         WHERE id = ? OR studentId = ? OR email = ?`,
+        [name, phone, bio, bloodGroup, address, guardianName, guardianPhone, photo, photo, targetId, targetId, targetId]
+      );
+    } else if (targetRole === 'TEACHER' || targetRole === 'STAFF') {
+      await dbPool.query(
+        `UPDATE teachers 
+         SET name = COALESCE(?, name), phone = COALESCE(?, phone), bio = COALESCE(?, bio),
+             designation = COALESCE(?, designation), specialization = COALESCE(?, specialization),
+             avatar = COALESCE(?, avatar), photoUrl = COALESCE(?, photoUrl)
+         WHERE id = ? OR employeeId = ? OR email = ?`,
+        [name, phone, bio, designation, specialization, photo, photo, targetId, targetId, targetId]
+      );
+    } else if (targetRole === 'ADMIN') {
+      await dbPool.query(
+        `UPDATE admins 
+         SET name = COALESCE(?, name), phone = COALESCE(?, phone),
+             designation = COALESCE(?, designation), avatar = COALESCE(?, avatar), photoUrl = COALESCE(?, photoUrl)
+         WHERE id = ? OR employeeId = ? OR email = ?`,
+        [name, phone, designation, photo, photo, targetId, targetId, targetId]
+      );
+    } else {
+      return res.status(400).json({ success: false, message: 'Invalid user role specified.' });
+    }
+
+    broadcastRealTimeEvent('USER_PROFILE_UPDATED', { userId: targetId, role: targetRole, name, photo });
+    res.json({ success: true, message: 'User profile updated by administrator.' });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// -------------------------------------------------------------
+// 4. DATA REST ENDPOINTS (STUDENTS, TEACHERS, SUBJECTS, ETC.)
+// -------------------------------------------------------------
+app.get('/api/students', authenticateToken, requireRole(['ADMIN', 'TEACHER', 'STUDENT']), async (req, res) => {
+  try {
+    const [rows] = await dbPool.query(`
+      SELECT id, studentId, rollNo, registerNumber, name, email, department, departmentCode,
+             course, year, semester, section, classId, academicYear, overallAttendance,
+             attendanceNum, gpa, pendingFees, phone, dob, gender, bloodGroup, address,
+             bio, guardianName, guardianPhone, avatar, photoUrl, admissionYear, status, created_at 
+      FROM students 
+      ORDER BY name ASC
+    `);
+    res.json(rows.map(r => ({ ...r, role: 'STUDENT', studentId: r.studentId || r.id })));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put('/api/students/:id', authenticateToken, requireRole(['ADMIN']), async (req, res) => {
+  const { id } = req.params;
+  const fields = req.body;
+  try {
+    if (fields.status) {
+      await dbPool.query('UPDATE students SET status = ? WHERE id = ? OR studentId = ?', [fields.status, id, id]);
+    }
+    if (fields.name || fields.email || fields.phone || fields.department || fields.course || fields.semester || fields.personalEmail || fields.address) {
+      await dbPool.query(
+        `UPDATE students 
+         SET name = COALESCE(?, name), 
+             email = COALESCE(?, email),
+             phone = COALESCE(?, phone),
+             department = COALESCE(?, department), 
+             course = COALESCE(?, course), 
+             semester = COALESCE(?, semester),
+             address = COALESCE(?, address)
+         WHERE id = ? OR studentId = ?`, 
+        [
+          fields.name || null, 
+          fields.email || null, 
+          fields.phone || null, 
+          fields.department || null, 
+          fields.course || null, 
+          fields.semester || null,
+          fields.address || null,
+          id, id
+        ]
+      );
+    }
+    broadcastRealTimeEvent('STUDENT_UPDATED', { id, ...fields });
+    res.json({ success: true, message: `Student ${id} updated in database successfully.` });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.patch('/api/students/:id/status', authenticateToken, requireRole(['ADMIN']), async (req, res) => {
+  const { id } = req.params;
+  const { status } = req.body;
+  try {
+    await dbPool.query('UPDATE students SET status = ? WHERE id = ? OR studentId = ?', [status, id, id]);
+    broadcastRealTimeEvent('STUDENT_STATUS_CHANGED', { id, status });
+    res.json({ success: true, message: `Student ${id} status updated to ${status}.` });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/students', authenticateToken, requireRole(['ADMIN']), async (req, res) => {
+  const s = req.body;
+  const id = s.id || `stu-${Date.now()}`;
+  const studentId = s.studentId || `STU-${Math.floor(1000 + Math.random() * 9000)}`;
+
+  try {
+    if (s.email) {
+      const [existingEmail] = await dbPool.query('SELECT studentId, name FROM students WHERE email = ? AND id != ? AND studentId != ?', [s.email, id, studentId]);
+      if (existingEmail.length > 0) {
+        return res.status(400).json({ success: false, message: `Email address '${s.email}' is already assigned to student '${existingEmail[0].name}' (${existingEmail[0].studentId}).` });
+      }
+    }
+
+    const rawPass = s.password || 'student123';
+    const passHash = (rawPass.startsWith('$2a$') || rawPass.startsWith('$2b$')) ? rawPass : await bcrypt.hash(rawPass, 10);
+
+    await dbPool.query(`
+      INSERT INTO students (
+        id, name, email, password, studentId, rollNo, registerNumber,
+        department, departmentCode, course, year, semester, section,
+        academicYear, overallAttendance, attendanceNum, gpa, pendingFees,
+        phone, bio, bloodGroup, address, guardianName, guardianPhone,
+        avatar, photoUrl, status
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON DUPLICATE KEY UPDATE name = VALUES(name), email = VALUES(email), department = VALUES(department), status = VALUES(status)
+    `, [
+      id, s.name, s.email, passHash, studentId,
+      s.rollNo || studentId, s.registerNumber || `REG-${Date.now()}`,
+      s.department || 'Computer Science and Engineering', s.departmentCode || 'CSE',
+      s.course || 'B.Tech Computer Science & Engineering', s.year || '1st Year',
+      s.semester || 'Semester 1', s.section || 'Sec A', s.academicYear || '2026-2027',
+      s.overallAttendance || '90%', Number(s.attendanceNum || 90), s.gpa || '3.50',
+      Number(s.pendingFees || 0), s.phone || '', s.bio || '', s.bloodGroup || 'O+',
+      s.address || '', s.guardianName || '', s.guardianPhone || '',
+      s.avatar || null, s.photoUrl || null, s.status || 'Active'
+    ]);
+
+    broadcastRealTimeEvent('STUDENT_ADDED', { id, studentId, name: s.name });
+    res.json({ success: true, id, studentId, message: 'Student created in database.' });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.post('/api/students/activate-all', authenticateToken, requireRole(['ADMIN']), async (req, res) => {
+  try {
+    await dbPool.query("UPDATE students SET status = 'Active'");
+    await dbPool.query("UPDATE teachers SET status = 'Active'");
+    broadcastRealTimeEvent('ACCOUNTS_ACTIVATED_ALL', { timestamp: new Date().toISOString() });
+    res.json({ success: true, message: 'All student and staff accounts set to Active status.' });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.delete('/api/students/:id', authenticateToken, requireRole(['ADMIN']), async (req, res) => {
+  const { id } = req.params;
+  try {
+    await dbPool.query('DELETE FROM students WHERE id = ? OR studentId = ?', [id, id]);
+    broadcastRealTimeEvent('STUDENT_DELETED', { id });
+    res.json({ success: true, message: `Student ${id} removed from database.` });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.get(['/api/teachers', '/api/faculty'], async (req, res) => {
+  try {
+    const [rows] = await dbPool.query(`
+      SELECT id, employeeId, name, email, department, designation, phone, qualification,
+             experienceYears, experience, joiningDate, specialization, assignedClasses,
+             bio, avatar, photoUrl, status, created_at 
+      FROM teachers 
+      ORDER BY name ASC
+    `);
+    res.json(rows.map(r => ({ ...r, role: 'TEACHER', employeeId: r.employeeId || r.id })));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/teachers', authenticateToken, requireRole(['ADMIN']), async (req, res) => {
+  const t = req.body;
+  const id = t.id || `user-teacher-${Date.now()}`;
+  try {
+    let empId = t.employeeId;
+    if (!empId || empId.includes('@')) {
+      const [maxRows] = await dbPool.query('SELECT MAX(CAST(SUBSTRING(employeeId, 5) AS UNSIGNED)) AS maxId FROM teachers WHERE employeeId LIKE "EMP-%"');
+      const nextNum = (maxRows[0]?.maxId || 118) + 1;
+      empId = `EMP-${nextNum}`;
+    }
+    const rawPass = t.password || 'teacher123';
+    const passHash = (rawPass.startsWith('$2a$') || rawPass.startsWith('$2b$')) ? rawPass : await bcrypt.hash(rawPass, 10);
+
+    await dbPool.query(`
+      INSERT INTO teachers (
+        id, name, email, password, employeeId, designation, department,
+        qualification, specialization, experience, phone, bio, avatar, photoUrl, status
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON DUPLICATE KEY UPDATE name = VALUES(name), designation = VALUES(designation), department = VALUES(department)
+    `, [
+      id, t.name, t.email, passHash, empId,
+      t.designation || 'Assistant Professor', t.department || 'Computer Science and Engineering',
+      t.qualification || 'M.Tech / Ph.D.', t.specialization || 'Engineering',
+      t.experience || '5 Years', t.phone || '', t.bio || '',
+      t.avatar || null, t.photoUrl || null, t.status || 'Active'
+    ]);
+
+    broadcastRealTimeEvent('TEACHER_ADDED', { id, employeeId: empId, name: t.name });
+    res.json({ success: true, id, employeeId: empId, message: 'Teacher created in database.' });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.put('/api/teachers/:id', authenticateToken, async (req, res) => {
+  const { id } = req.params;
+  const isOwner = req.user.id === id || req.user.employeeId === id;
+  const isAdmin = req.user.role === 'ADMIN';
+
+  if (!isOwner && !isAdmin) {
+    return res.status(403).json({ success: false, message: 'Forbidden: Insufficient privileges to modify this faculty record.' });
+  }
+
+  const t = req.body;
+  const photo = t.photoUrl || t.avatar || t.image || null;
+
+  try {
+    await dbPool.query(`
+      UPDATE teachers
+      SET name = COALESCE(?, name),
+          phone = COALESCE(?, phone),
+          designation = COALESCE(?, designation),
+          department = COALESCE(?, department),
+          qualification = COALESCE(?, qualification),
+          specialization = COALESCE(?, specialization),
+          experience = COALESCE(?, experience),
+          bio = COALESCE(?, bio),
+          avatar = COALESCE(?, avatar),
+          photoUrl = COALESCE(?, photoUrl)
+      WHERE id = ? OR employeeId = ?
+    `, [
+      isAdmin ? t.name : null,
+      t.phone || null,
+      isAdmin ? t.designation : null,
+      isAdmin ? t.department : null,
+      isAdmin ? t.qualification : null,
+      t.specialization || null,
+      isAdmin ? t.experience : null,
+      t.bio || null,
+      photo,
+      photo,
+      id,
+      id
+    ]);
+
+    broadcastRealTimeEvent('TEACHER_UPDATED', { id, employeeId: id, ...t });
+    res.json({ success: true, message: `Teacher ${id} profile updated in database.` });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.patch('/api/teachers/:id/status', authenticateToken, requireRole(['ADMIN']), async (req, res) => {
+  const { id } = req.params;
+  const { status } = req.body;
+  try {
+    await dbPool.query('UPDATE teachers SET status = ? WHERE id = ? OR employeeId = ?', [status || 'Active', id, id]);
+    broadcastRealTimeEvent('TEACHER_STATUS_UPDATED', { id, status });
+    res.json({ success: true, message: `Teacher status updated to ${status}.` });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.delete('/api/teachers/:id', authenticateToken, requireRole(['ADMIN']), async (req, res) => {
+  const { id } = req.params;
+  try {
+    await dbPool.query('DELETE FROM teachers WHERE id = ? OR employeeId = ?', [id, id]);
+    broadcastRealTimeEvent('TEACHER_DELETED', { id });
+    res.json({ success: true, message: `Teacher ${id} removed from database.` });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// --- COURSES & SUBJECTS UNIFIED ENDPOINTS ---
+app.get('/api/courses', async (req, res) => {
+  try {
+    const [rows] = await dbPool.query('SELECT * FROM subjects ORDER BY code ASC');
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/courses', authenticateToken, requireRole(['ADMIN']), async (req, res) => {
+  const s = req.body;
+  const id = s.id || `crs-${Date.now()}`;
+  try {
+    await dbPool.query(`
+      INSERT INTO courses (
+        id, code, name, department, departmentCode, semester, year, credits, courseType, assignedTeacherName, academicYear
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON DUPLICATE KEY UPDATE name = VALUES(name), department = VALUES(department), credits = VALUES(credits)
+    `, [
+      id, s.code, s.name, s.department || 'Computer Science & Engineering',
+      s.departmentCode || 'CSE', s.semester || 'Semester 1', s.year || '1st Year',
+      Number(s.credits || 4), s.courseType || s.subjectType || 'Core Theory',
+      s.assignedTeacherName || 'Faculty In-Charge', s.academicYear || '2026-2027'
+    ]);
+    broadcastRealTimeEvent('COURSE_ADDED', { id, code: s.code, name: s.name });
+    res.json({ success: true, id, message: 'Course created in database.' });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.put('/api/courses/:id', authenticateToken, requireRole(['ADMIN']), async (req, res) => {
+  const { id } = req.params;
+  const s = req.body;
+  try {
+    const [[existing]] = await dbPool.query('SELECT * FROM courses WHERE id = ? OR code = ?', [id, id]);
+    const oldCode = existing ? existing.code : id;
+    const oldName = existing ? existing.name : '';
+
+    await dbPool.query(`
+      UPDATE courses 
+      SET name = COALESCE(?, name), code = COALESCE(?, code), department = COALESCE(?, department),
+          departmentCode = COALESCE(?, departmentCode), semester = COALESCE(?, semester),
+          credits = COALESCE(?, credits), courseType = COALESCE(?, courseType),
+          assignedTeacherName = COALESCE(?, assignedTeacherName), status = COALESCE(?, status)
+      WHERE id = ? OR code = ?
+    `, [
+      s.name, s.code, s.department, s.departmentCode, s.semester,
+      s.credits ? Number(s.credits) : null, s.courseType || s.subjectType, s.assignedTeacherName, s.status,
+      id, id
+    ]);
+
+    // Relational cascading updates to related database tables
+    if (s.name || s.code || s.assignedTeacherName || s.department) {
+      const newCode = s.code || oldCode;
+      const newName = s.name || oldName;
+      const newTeacher = s.assignedTeacherName;
+
+      await dbPool.query(`
+        UPDATE subjects SET name = ?, code = ?, department = COALESCE(?, department) WHERE code = ? OR id = ?
+      `, [newName, newCode, s.department, oldCode, id]).catch(() => {});
+
+      await dbPool.query(`
+        UPDATE faculty_class_assignments SET subjectCode = ?, subjectName = ?, teacherName = COALESCE(?, teacherName) WHERE subjectCode = ?
+      `, [newCode, newName, newTeacher, oldCode]).catch(() => {});
+
+      await dbPool.query(`
+        UPDATE assignments SET subject = ?, code = ?, teacherName = COALESCE(?, teacherName) WHERE code = ? OR subject = ?
+      `, [newName, newCode, newTeacher, oldCode, oldName]).catch(() => {});
+
+      await dbPool.query(`
+        UPDATE attendance_logs SET subjectCode = ?, subjectName = ? WHERE subjectCode = ? OR subjectName = ?
+      `, [newCode, newName, oldCode, oldName]).catch(() => {});
+
+      await dbPool.query(`
+        UPDATE internal_marks SET subjectCode = ?, subjectName = ? WHERE subjectCode = ? OR subjectName = ?
+      `, [newCode, newName, oldCode, oldName]).catch(() => {});
+    }
+
+    broadcastRealTimeEvent('COURSE_UPDATED', { id, code: s.code || oldCode, name: s.name || oldName });
+    res.json({ success: true, message: `Course ${id} updated with relational cascading.` });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.delete('/api/courses/:id', authenticateToken, requireRole(['ADMIN']), async (req, res) => {
+  const { id } = req.params;
+  const { force } = req.query;
+  try {
+    const [[existing]] = await dbPool.query('SELECT * FROM courses WHERE id = ? OR code = ?', [id, id]);
+    const targetCode = existing ? existing.code : id;
+    const targetId = existing ? existing.id : id;
+
+    if (force !== 'true' && existing) {
+      const [subjRows] = await dbPool.query('SELECT COUNT(*) as count FROM subjects WHERE courseId = ? OR code = ?', [targetId, targetCode]);
+      const [studentRows] = await dbPool.query('SELECT COUNT(*) as count FROM students WHERE course = ? OR course = ?', [existing.name, targetCode]);
+      
+      const subjCount = subjRows[0]?.count || 0;
+      const studentCount = studentRows[0]?.count || 0;
+
+      if (subjCount > 0 || studentCount > 0) {
+        return res.status(400).json({
+          success: false,
+          error: `Cannot delete course "${existing.name}" because it contains ${subjCount} subject(s) and ${studentCount} enrolled student(s). Clear subjects/students first or confirm forced deletion.`,
+          hasChildren: true,
+          subjCount,
+          studentCount
+        });
+      }
+    }
+
+    await dbPool.query('DELETE FROM courses WHERE id = ? OR code = ?', [id, id]);
+    await dbPool.query('DELETE FROM subjects WHERE id = ? OR code = ?', [id, targetCode]).catch(() => {});
+    await dbPool.query('DELETE FROM faculty_class_assignments WHERE subjectCode = ?', [targetCode]).catch(() => {});
+
+    broadcastRealTimeEvent('COURSE_DELETED', { id, code: targetCode });
+    res.json({ success: true, message: `Course ${id} deleted with relational cascading.` });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// --- SUBJECTS & COURSE-SUBJECT LINKAGE ENDPOINTS ---
+app.get('/api/courses/:courseId/subjects', async (req, res) => {
+  const { courseId } = req.params;
+  try {
+    const [courseRows] = await dbPool.query('SELECT * FROM courses WHERE id = ? OR code = ?', [courseId, courseId]);
+    const crs = courseRows[0];
+    let rows = [];
+    if (crs) {
+      [rows] = await dbPool.query(
+        'SELECT * FROM subjects WHERE courseId = ? OR (LOWER(department) = LOWER(?) AND LOWER(semester) = LOWER(?)) ORDER BY code ASC',
+        [crs.id, crs.department, crs.semester]
+      );
+    } else {
+      [rows] = await dbPool.query('SELECT * FROM subjects WHERE courseId = ? ORDER BY code ASC', [courseId]);
+    }
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/subjects', async (req, res) => {
+  try {
+    const [rows] = await dbPool.query('SELECT * FROM subjects ORDER BY code ASC');
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/subjects', authenticateToken, requireRole(['ADMIN']), async (req, res) => {
+  const s = req.body;
+  const id = s.id || `sub-${Date.now()}`;
+  try {
+    await dbPool.query(`
+      INSERT INTO subjects (id, code, name, department, courseId, assignedTeacherId, assignedTeacherName, semester, credits)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON DUPLICATE KEY UPDATE 
+        name = VALUES(name), department = VALUES(department), courseId = VALUES(courseId),
+        assignedTeacherId = VALUES(assignedTeacherId), assignedTeacherName = VALUES(assignedTeacherName),
+        semester = VALUES(semester), credits = VALUES(credits)
+    `, [
+      id, s.code, s.name, s.department || 'Computer Science & Engineering',
+      s.courseId || null, s.assignedTeacherId || null, s.assignedTeacherName || null,
+      s.semester || 'Semester 1', Number(s.credits || 4)
+    ]);
+    broadcastRealTimeEvent('SUBJECT_ADDED', { id, code: s.code, name: s.name });
+    res.json({ success: true, id, message: 'Subject created in database.' });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.put('/api/subjects/:id', authenticateToken, requireRole(['ADMIN']), async (req, res) => {
+  const { id } = req.params;
+  const s = req.body;
+  try {
+    await dbPool.query(`
+      UPDATE subjects
+      SET name = COALESCE(?, name), code = COALESCE(?, code), department = COALESCE(?, department),
+          courseId = COALESCE(?, courseId), assignedTeacherId = COALESCE(?, assignedTeacherId),
+          assignedTeacherName = COALESCE(?, assignedTeacherName), semester = COALESCE(?, semester),
+          credits = COALESCE(?, credits)
+      WHERE id = ? OR code = ?
+    `, [
+      s.name || null, s.code || null, s.department || null,
+      s.courseId || null, s.assignedTeacherId || null, s.assignedTeacherName || null,
+      s.semester || null, s.credits ? Number(s.credits) : null,
+      id, id
+    ]);
+    broadcastRealTimeEvent('SUBJECT_UPDATED', { id, code: s.code, name: s.name });
+    res.json({ success: true, message: `Subject ${id} updated in database.` });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.delete('/api/subjects/:id', authenticateToken, requireRole(['ADMIN']), async (req, res) => {
+  const { id } = req.params;
+  try {
+    await dbPool.query('DELETE FROM subjects WHERE id = ? OR code = ?', [id, id]);
+    await dbPool.query('DELETE FROM staff_subject_assignments WHERE subjectId = ? OR subjectCode = ?', [id, id]).catch(() => {});
+    broadcastRealTimeEvent('SUBJECT_DELETED', { id });
+    res.json({ success: true, message: `Subject ${id} deleted from database.` });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// --- STAFF SUBJECT ASSIGNMENTS ENDPOINTS ---
+app.get('/api/staff-subject-assignments', authenticateToken, requireRole(['ADMIN', 'TEACHER']), async (req, res) => {
+  try {
+    const [rows] = await dbPool.query('SELECT * FROM staff_subject_assignments ORDER BY created_at DESC');
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/subjects/:subjectId/staff', authenticateToken, requireRole(['ADMIN', 'TEACHER']), async (req, res) => {
+  const { subjectId } = req.params;
+  try {
+    const [rows] = await dbPool.query(
+      'SELECT * FROM staff_subject_assignments WHERE subjectId = ? OR subjectCode = ?',
+      [subjectId, subjectId]
+    );
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/subjects/:subjectId/staff', authenticateToken, requireRole(['ADMIN']), async (req, res) => {
+  const { subjectId } = req.params;
+  const { teacherId, teacherName, subjectCode, subjectName, courseId, courseName, department } = req.body;
+  const id = `ssa-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
+  try {
+    await dbPool.query(`
+      INSERT INTO staff_subject_assignments (id, teacherId, teacherName, subjectId, subjectCode, subjectName, courseId, courseName, department)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON DUPLICATE KEY UPDATE teacherName = VALUES(teacherName)
+    `, [
+      id, teacherId, teacherName, subjectId, subjectCode || subjectId, subjectName || '', courseId || '', courseName || '', department || ''
+    ]);
+
+    // Update main subject table for backward compatibility
+    await dbPool.query(`
+      UPDATE subjects SET assignedTeacherId = ?, assignedTeacherName = ? WHERE id = ? OR code = ?
+    `, [teacherId, teacherName, subjectId, subjectId]).catch(() => {});
+
+    broadcastRealTimeEvent('STAFF_ASSIGNED_TO_SUBJECT', { id, teacherId, subjectId });
+    res.json({ success: true, id, message: `Staff ${teacherName} assigned to subject.` });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.delete('/api/subjects/:subjectId/staff/:teacherId', authenticateToken, requireRole(['ADMIN']), async (req, res) => {
+  const { subjectId, teacherId } = req.params;
+  try {
+    await dbPool.query(
+      'DELETE FROM staff_subject_assignments WHERE (subjectId = ? OR subjectCode = ?) AND (teacherId = ?)',
+      [subjectId, subjectId, teacherId]
+    );
+    broadcastRealTimeEvent('STAFF_UNASSIGNED_FROM_SUBJECT', { subjectId, teacherId });
+    res.json({ success: true, message: 'Staff assignment removed.' });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.get('/api/teachers/:teacherId/assigned-classes', authenticateToken, requireRole(['ADMIN', 'TEACHER']), async (req, res) => {
+  const { teacherId } = req.params;
+  try {
+    const [fcaRows] = await dbPool.query(
+      'SELECT * FROM faculty_class_assignments WHERE teacherId = ? OR teacherId IN (SELECT employeeId FROM teachers WHERE id = ? OR employeeId = ?)',
+      [teacherId, teacherId, teacherId]
+    );
+    const [ssaRows] = await dbPool.query(
+      'SELECT * FROM staff_subject_assignments WHERE teacherId = ? OR teacherId IN (SELECT employeeId FROM teachers WHERE id = ? OR employeeId = ?)',
+      [teacherId, teacherId, teacherId]
+    );
+    const mappedFca = fcaRows.map(r => ({
+      ...r,
+      facultyId: r.teacherId,
+      facultyName: r.teacherName
+    }));
+    res.json({ facultyClassAssignments: mappedFca, staffSubjectAssignments: ssaRows });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// --- ADMISSIONS APPLICATION ENDPOINTS WITH MYSQL STORAGE & DYNAMIC AGE CALCULATION ---
+app.get('/api/admissions/applications', authenticateToken, requireRole(['ADMIN']), async (req, res) => {
+  try {
+    const [rows] = await dbPool.query('SELECT * FROM admission_applications ORDER BY created_at DESC');
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/admissions/apply', publicApiRateLimiter, async (req, res) => {
+  const appData = req.body;
+  const { 
+    dob, fullName, email, phone, gender, course, department, 
+    prevQualification, prevPercentage, guardianName, guardianPhone, 
+    doc10th, doc12th, docTc 
+  } = appData;
+
+  if (!dob) {
+    return res.status(400).json({ success: false, error: 'Date of Birth is required.' });
+  }
+
+  // Calculate age dynamically based on user input DOB
+  const birthDate = new Date(dob);
+  const today = new Date();
+  let age = today.getFullYear() - birthDate.getFullYear();
+  const monthDiff = today.getMonth() - birthDate.getMonth();
+  if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+    age--;
+  }
+
+  if (isNaN(age) || age < 17) {
+    return res.status(400).json({
+      success: false,
+      age,
+      error: 'You must be at least 17 years old to apply.'
+    });
+  }
+
+  const id = `app-${Date.now()}`;
+  const appRef = `APP-${today.getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
+
+  try {
+    await dbPool.query(`
+      INSERT INTO admission_applications (
+        id, app_ref, full_name, email, phone, dob, gender, course, department,
+        prev_qualification, prev_percentage, guardian_name, guardian_phone,
+        doc_10th, doc_12th, doc_tc, status
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `, [
+      id, appRef, fullName, email, phone || '', dob, gender || 'Male',
+      course || 'B.Tech Computer Science & Engineering', department || 'Computer Science',
+      prevQualification || '12th Standard', prevPercentage || '',
+      guardianName || '', guardianPhone || '',
+      doc10th || null, doc12th || null, docTc || null,
+      'Under Verification'
+    ]);
+
+    broadcastRealTimeEvent('ADMISSION_APPLICATION_SUBMITTED', {
+      id,
+      appRef,
+      fullName,
+      email,
+      course,
+      calculatedAge: age
+    });
+
+    res.json({
+      success: true,
+      id,
+      appRef,
+      calculatedAge: age,
+      message: `Application ${appRef} saved to MySQL database successfully.`
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.put('/api/admissions/applications/:id', authenticateToken, requireRole(['ADMIN']), async (req, res) => {
+  const { id } = req.params;
+  const { status } = req.body;
+  try {
+    await dbPool.query('UPDATE admission_applications SET status = ? WHERE id = ? OR app_ref = ?', [status, id, id]);
+    broadcastRealTimeEvent('ADMISSION_APPLICATION_UPDATED', { id, status });
+    res.json({ success: true, message: `Application ${id} status updated to ${status}.` });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.get('/api/fees', authenticateToken, requireRole(['ADMIN', 'TEACHER', 'STUDENT']), async (req, res) => {
+  try {
+    const [rows] = await dbPool.query('SELECT * FROM fee_payments ORDER BY created_at DESC');
+    res.json(rows.map(r => ({
+      id: r.id,
+      studentId: r.student_id,
+      feeType: r.fee_type,
+      amount: r.amount,
+      paymentMethod: r.payment_method,
+      transactionId: r.transaction_id,
+      status: r.status,
+      date: r.created_at ? new Date(r.created_at).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]
+    })));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/fees/pay', authenticateToken, requireRole(['STUDENT', 'ADMIN']), async (req, res) => {
+  const { studentId, amount, feeType, paymentMethod, idempotencyKey } = req.body;
+  if (!studentId || !amount) {
+    return res.status(400).json({ success: false, message: 'Student ID and amount are required.' });
+  }
+
+  // Student ownership check: Students can only pay for their own account; Admins can pay for anyone
+  if (req.user && req.user.role === 'STUDENT') {
+    const callerStudentId = req.user.studentId || req.user.id;
+    if (studentId !== callerStudentId && studentId !== req.user.id && studentId !== req.user.studentId) {
+      return res.status(403).json({
+        success: false,
+        message: 'Forbidden: Students may only submit fee payments for their own student account.'
+      });
+    }
+  }
+
+  const numAmount = Number(amount || 0);
+  const cleanFeeType = feeType || 'Tuition Fee';
+  const ik = idempotencyKey || req.headers['x-idempotency-key'] || `IDEM-${studentId}-${cleanFeeType}-${numAmount}`;
+
+  const conn = await dbPool.getConnection();
+  try {
+    await conn.beginTransaction();
+
+    // Check if idempotency key already exists or duplicate transaction within 15 seconds
+    const [existingTxn] = await conn.query(
+      `SELECT * FROM fee_payments 
+       WHERE idempotency_key = ? OR (student_id = ? AND fee_type = ? AND amount = ? AND created_at >= NOW() - INTERVAL 15 SECOND)
+       LIMIT 1`,
+      [ik, studentId, cleanFeeType, numAmount]
+    );
+
+    if (existingTxn.length > 0) {
+      await conn.rollback();
+      conn.release();
+      const existing = existingTxn[0];
+      return res.json({
+        success: true,
+        idempotentDuplicate: true,
+        txnId: existing.transaction_id || existing.id,
+        message: 'Duplicate payment request blocked by Idempotency Engine. Previous transaction returned.'
+      });
+    }
+
+    const txnId = `TXN-FEE-${Date.now()}-${Math.floor(100 + Math.random() * 900)}`;
+    await conn.query(`
+      INSERT INTO fee_payments (id, student_id, fee_type, amount, payment_method, transaction_id, idempotency_key, status, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, 'Completed', NOW())
+    `, [txnId, studentId, cleanFeeType, numAmount, paymentMethod || 'Online', txnId, ik]);
+
+    await conn.query(`
+      UPDATE students 
+      SET pendingFees = GREATEST(0, pendingFees - ?)
+      WHERE id = ? OR studentId = ?
+    `, [numAmount, studentId, studentId]);
+
+    const notifId = `NOTIF-${Date.now()}`;
+    await conn.query(`
+      INSERT INTO notifications (id, userId, userRole, title, message, date, isRead)
+      VALUES (?, ?, 'STUDENT', 'Fee Payment Receipt Confirmed', ?, NOW(), 0)
+    `, [notifId, studentId, `Your fee payment of ₹${numAmount.toLocaleString()} (${cleanFeeType}) was successfully processed. Txn ID: ${txnId}`]);
+
+    await conn.commit();
+    conn.release();
+
+    broadcastRealTimeEvent('FEE_PAYMENT_RECORDED', { studentId, amount: numAmount, txnId });
+    res.json({ success: true, txnId, message: 'Fee payment recorded and balance deducted.' });
+  } catch (err) {
+    await conn.rollback();
+    conn.release();
+    if (err.code === 'ER_DUP_ENTRY' || (err.message && err.message.includes('idempotency'))) {
+      try {
+        const [rows] = await dbPool.query('SELECT * FROM fee_payments WHERE idempotency_key = ? LIMIT 1', [ik]);
+        if (rows.length > 0) {
+          return res.json({
+            success: true,
+            idempotentDuplicate: true,
+            txnId: rows[0].transaction_id || rows[0].id,
+            message: 'Duplicate payment request blocked by Idempotency Engine. Previous transaction returned.'
+          });
+        }
+      } catch (e) {}
+    }
+    res.status(500).json({ success: false, message: err.message || 'Fee payment failed.' });
+  }
+});
+
+app.get('/api/departments', async (req, res) => {
+  try {
+    const [rows] = await dbPool.query('SELECT * FROM departments ORDER BY name ASC');
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/departments/:id/courses', async (req, res) => {
+  const { id } = req.params;
+  try {
+    const [deptRows] = await dbPool.query('SELECT * FROM departments WHERE id = ? OR code = ? OR name = ?', [id, id, id]);
+    const dept = deptRows[0];
+    const deptCode = dept ? dept.code : id;
+    const deptName = dept ? dept.name : id;
+    const [rows] = await dbPool.query(
+      'SELECT * FROM subjects WHERE departmentCode = ? OR department = ? OR department = ? ORDER BY code ASC',
+      [deptCode, deptName, id]
+    );
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/departments', authenticateToken, requireRole(['ADMIN']), async (req, res) => {
+  const d = req.body;
+  const id = d.id || `dept-${Date.now()}`;
+  try {
+    await dbPool.query(`
+      INSERT INTO departments (id, name, code, hod, description, status)
+      VALUES (?, ?, ?, ?, ?, ?)
+      ON DUPLICATE KEY UPDATE name = VALUES(name), hod = VALUES(hod), description = VALUES(description), status = VALUES(status)
+    `, [id, d.name, d.code || 'DEPT', d.hod || 'Unassigned', d.description || '', d.status || 'Active']);
+
+    broadcastRealTimeEvent('DEPARTMENT_ADDED', { id, name: d.name, code: d.code });
+    res.json({ success: true, id, message: 'Department created in database.' });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.put('/api/departments/:id', authenticateToken, requireRole(['ADMIN']), async (req, res) => {
+  const { id } = req.params;
+  const d = req.body;
+  try {
+    await dbPool.query(`
+      UPDATE departments
+      SET name = COALESCE(?, name), code = COALESCE(?, code), hod = COALESCE(?, hod),
+          description = COALESCE(?, description), status = COALESCE(?, status)
+      WHERE id = ? OR code = ?
+    `, [d.name, d.code, d.hod, d.description, d.status, id, id]);
+
+    broadcastRealTimeEvent('DEPARTMENT_UPDATED', { id });
+    res.json({ success: true, message: `Department ${id} updated in database.` });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.delete('/api/departments/:id', authenticateToken, requireRole(['ADMIN']), async (req, res) => {
+  const { id } = req.params;
+  const { force } = req.query;
+  try {
+    const [[dept]] = await dbPool.query('SELECT * FROM departments WHERE id = ? OR code = ? OR name = ?', [id, id, id]);
+    if (force !== 'true' && dept) {
+      const [subjectRows] = await dbPool.query(
+        'SELECT COUNT(*) as count FROM subjects WHERE departmentCode = ? OR department = ?',
+        [dept.code, dept.name]
+      );
+      const subjectCount = subjectRows[0]?.count || 0;
+      if (subjectCount > 0) {
+        return res.status(400).json({
+          success: false,
+          error: `Cannot delete department "${dept.name}" because it contains ${subjectCount} subject(s). Delete or reassign subjects first, or confirm forced deletion.`,
+          hasChildren: true,
+          subjectCount
+        });
+      }
+    }
+
+    await dbPool.query('DELETE FROM departments WHERE id = ? OR code = ?', [id, id]);
+    broadcastRealTimeEvent('DEPARTMENT_DELETED', { id });
+    res.json({ success: true, message: `Department ${id} deleted from database.` });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+app.get('/api/classes', authenticateToken, requireRole(['ADMIN', 'TEACHER', 'STUDENT']), async (req, res) => {
+  try {
+    const [rows] = await dbPool.query('SELECT * FROM classes ORDER BY department, semester');
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/faculty-assignments', async (req, res) => {
+  try {
+    const [rows] = await dbPool.query('SELECT * FROM faculty_class_assignments ORDER BY departmentCode, year, assignmentId');
+    res.json(rows.map(r => ({
+      ...r,
+      facultyId: r.teacherId || r.facultyId,
+      facultyName: r.teacherName || r.facultyName
+    })));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/faculty-assignments', authenticateToken, requireRole(['ADMIN']), async (req, res) => {
+  const f = req.body;
+  const assignmentId = f.assignmentId || `FAC-ASN-${Date.now()}`;
+  try {
+    await dbPool.query(`
+      INSERT INTO faculty_class_assignments (
+        assignmentId, classId, facultyId, facultyName, departmentCode,
+        departmentName, year, semester, section, subjectCode, subjectName,
+        studentCount, academicYear, assignedDate, startDate, endDate, status
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON DUPLICATE KEY UPDATE facultyId = VALUES(facultyId), facultyName = VALUES(facultyName), status = VALUES(status)
+    `, [
+      assignmentId, f.classId || `CLS-${f.departmentCode}-${f.year}-${f.semester}`,
+      f.facultyId, f.facultyName, f.departmentCode, f.departmentName || f.departmentCode,
+      f.year, f.semester, f.section || 'Sec A', f.subjectCode, f.subjectName,
+      Number(f.studentCount || 10), f.academicYear || '2026-2027',
+      f.assignedDate || new Date().toISOString().split('T')[0],
+      f.startDate || '2026-08-01', f.endDate || '2026-12-20', f.status || 'ACTIVE'
+    ]);
+
+    broadcastRealTimeEvent('FACULTY_CLASS_ASSIGNED', { assignmentId, ...f });
+    res.json({ success: true, assignmentId, message: 'Class assigned to faculty in database.' });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.delete('/api/faculty-assignments/:assignmentId', authenticateToken, requireRole(['ADMIN']), async (req, res) => {
+  const { assignmentId } = req.params;
+  try {
+    await dbPool.query('DELETE FROM faculty_class_assignments WHERE assignmentId = ?', [assignmentId]);
+    broadcastRealTimeEvent('FACULTY_CLASS_UNASSIGNED', { assignmentId });
+    res.json({ success: true, message: `Assignment ${assignmentId} deleted from database.` });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// --- TIMETABLE SLOTS ENDPOINTS ---
+app.get('/api/timetable', authenticateToken, requireRole(['ADMIN', 'TEACHER', 'STUDENT']), async (req, res) => {
+  const { department, semester, section, day, teacherId, courseId } = req.query;
+  try {
+    let sql = 'SELECT * FROM timetable_slots WHERE 1=1';
+    const params = [];
+    if (department) { sql += ' AND (LOWER(department) = LOWER(?) OR LOWER(department) = LOWER(?))'; params.push(department, department); }
+    if (semester) { sql += ' AND LOWER(semester) = LOWER(?)'; params.push(semester); }
+    if (section) { sql += ' AND LOWER(section) = LOWER(?)'; params.push(section); }
+    if (day) { sql += ' AND LOWER(dayOfWeek) = LOWER(?)'; params.push(day); }
+    if (teacherId) { sql += ' AND (teacherId = ? OR teacherName = ?)'; params.push(teacherId, teacherId); }
+    if (courseId) { sql += ' AND courseId = ?'; params.push(courseId); }
+    sql += ' ORDER BY FIELD(dayOfWeek, "Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"), period ASC';
+
+    const [rows] = await dbPool.query(sql, params);
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/timetable', authenticateToken, requireRole(['ADMIN']), async (req, res) => {
+  const t = req.body;
+  const id = t.id || `slot-${Date.now()}-${Math.floor(100 + Math.random() * 900)}`;
+  const classId = t.classId || `CLS-${t.departmentCode || t.department}-${t.semester}-${t.section || 'A'}`;
+  try {
+    await dbPool.query(`
+      INSERT INTO timetable_slots (
+        id, subjectId, subjectCode, subjectName, courseId, department, semester,
+        section, teacherId, teacherName, dayOfWeek, period, startTime, endTime, room, classId, status
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON DUPLICATE KEY UPDATE
+        subjectCode = VALUES(subjectCode), subjectName = VALUES(subjectName), teacherId = VALUES(teacherId),
+        teacherName = VALUES(teacherName), startTime = VALUES(startTime), endTime = VALUES(endTime),
+        room = VALUES(room), status = VALUES(status)
+    `, [
+      id, t.subjectId || id, t.subjectCode, t.subjectName, t.courseId || null,
+      t.department, t.semester, t.section || 'A', t.teacherId || null,
+      t.teacherName || null, t.dayOfWeek || 'Mon', t.period || 'P1',
+      t.startTime || '09:00 AM', t.endTime || '10:00 AM', t.room || 'Room 101',
+      classId, t.status || 'Active'
+    ]);
+
+    // Upsert into faculty_class_assignments if teacherId is assigned
+    if (t.teacherId) {
+      const asnId = `FAC-${t.teacherId}-${t.subjectCode}-${t.section || 'A'}`;
+      await dbPool.query(`
+        INSERT INTO faculty_class_assignments (
+          id, assignmentId, teacherId, teacherName, subjectCode, subjectName,
+          department, semester, section, classId
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON DUPLICATE KEY UPDATE teacherId = VALUES(teacherId), teacherName = VALUES(teacherName)
+      `, [
+        asnId, asnId, t.teacherId, t.teacherName || 'Faculty', t.subjectCode,
+        t.subjectName, t.department, t.semester, t.section || 'A', classId
+      ]).catch(() => {});
+    }
+
+    broadcastRealTimeEvent('TIMETABLE_SLOT_ADDED', { id, subjectCode: t.subjectCode, dayOfWeek: t.dayOfWeek });
+    res.json({ success: true, id, classId, message: 'Timetable slot created.' });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.put('/api/timetable/:id', authenticateToken, requireRole(['ADMIN']), async (req, res) => {
+  const { id } = req.params;
+  const t = req.body;
+  try {
+    await dbPool.query(`
+      UPDATE timetable_slots
+      SET subjectCode = COALESCE(?, subjectCode), subjectName = COALESCE(?, subjectName),
+          teacherId = COALESCE(?, teacherId), teacherName = COALESCE(?, teacherName),
+          dayOfWeek = COALESCE(?, dayOfWeek), period = COALESCE(?, period),
+          startTime = COALESCE(?, startTime), endTime = COALESCE(?, endTime),
+          room = COALESCE(?, room), status = COALESCE(?, status)
+      WHERE id = ?
+    `, [
+      t.subjectCode || null, t.subjectName || null, t.teacherId || null, t.teacherName || null,
+      t.dayOfWeek || null, t.period || null, t.startTime || null, t.endTime || null,
+      t.room || null, t.status || null, id
+    ]);
+    broadcastRealTimeEvent('TIMETABLE_SLOT_UPDATED', { id });
+    res.json({ success: true, message: `Timetable slot ${id} updated.` });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.delete('/api/timetable/:id', authenticateToken, requireRole(['ADMIN']), async (req, res) => {
+  const { id } = req.params;
+  try {
+    await dbPool.query('DELETE FROM timetable_slots WHERE id = ?', [id]);
+    broadcastRealTimeEvent('TIMETABLE_SLOT_DELETED', { id });
+    res.json({ success: true, message: `Timetable slot ${id} deleted.` });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// --- STUDENT TODAY SUBJECTS ENDPOINT ---
+app.get('/api/students/:id/today-subjects', authenticateToken, requireRole(['ADMIN', 'TEACHER', 'STUDENT']), async (req, res) => {
+  const { id } = req.params;
+  try {
+    const [stdRows] = await dbPool.query('SELECT * FROM students WHERE id = ? OR studentId = ?', [id, id]);
+    if (stdRows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Student not found.' });
+    }
+    const stu = stdRows[0];
+
+    const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const todayDay = days[new Date().getDay()];
+
+    const dept = stu.department;
+    const deptCode = stu.departmentCode;
+    const sem = stu.semester;
+    const sec = stu.section || 'A';
+    const cleanSec = sec.replace(/Sec\s*/i, '').trim() || 'A';
+
+    const [slots] = await dbPool.query(`
+      SELECT * FROM timetable_slots
+      WHERE (LOWER(department) = LOWER(?) OR LOWER(department) = LOWER(?))
+        AND LOWER(semester) = LOWER(?)
+        AND (LOWER(section) = LOWER(?) OR LOWER(section) = LOWER(?) OR section IS NULL OR section = 'ALL')
+        AND dayOfWeek = ?
+      ORDER BY period ASC, startTime ASC
+    `, [dept, deptCode, sem, sec, cleanSec, todayDay]);
+
+    res.json({
+      studentId: stu.studentId,
+      dayOfWeek: todayDay,
+      department: dept,
+      semester: sem,
+      section: sec,
+      todaySubjects: slots
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// --- TEACHER DASHBOARD & CLASSES ENDPOINTS ---
+app.get('/api/teachers/:id/dashboard-summary', authenticateToken, requireRole(['ADMIN', 'TEACHER']), async (req, res) => {
+  const { id } = req.params;
+  try {
+    const [tchRows] = await dbPool.query('SELECT * FROM teachers WHERE id = ? OR employeeId = ?', [id, id]);
+    const tch = tchRows[0];
+    const empId = tch ? tch.employeeId : id;
+    const tchName = tch ? tch.name : id;
+
+    const fullDays = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    const shortDays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const todayIndex = new Date().getDay();
+    const todayFull = fullDays[todayIndex];
+    const todayShort = shortDays[todayIndex];
+
+    const [assignedSubjects] = await dbPool.query(
+      'SELECT DISTINCT subjectCode, subjectName FROM timetable_slots WHERE teacherId = ? OR teacherName = ?',
+      [empId, tchName]
+    );
+
+    const [assignedClasses] = await dbPool.query(
+      'SELECT DISTINCT department, semester, section, classId FROM timetable_slots WHERE teacherId = ? OR teacherName = ?',
+      [empId, tchName]
+    );
+
+    const [todayClasses] = await dbPool.query(
+      'SELECT * FROM timetable_slots WHERE (teacherId = ? OR teacherName = ?) AND (dayOfWeek = ? OR dayOfWeek = ? OR dayOfWeek LIKE ?) ORDER BY period ASC',
+      [empId, tchName, todayFull, todayShort, `${todayShort}%`]
+    );
+
+    res.json({
+      teacherId: empId,
+      teacherName: tchName,
+      totalSubjects: assignedSubjects.length,
+      totalClasses: assignedClasses.length,
+      todayClassCount: todayClasses.length,
+      classesBreakdown: assignedClasses,
+      todayClasses
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/teachers/:id/classes-today', authenticateToken, requireRole(['ADMIN', 'TEACHER']), async (req, res) => {
+  const { id } = req.params;
+  try {
+    const [tchRows] = await dbPool.query('SELECT * FROM teachers WHERE id = ? OR employeeId = ?', [id, id]);
+    const tch = tchRows[0];
+    const empId = tch ? tch.employeeId : id;
+    const tchName = tch ? tch.name : id;
+
+    const fullDays = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    const shortDays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const todayIndex = new Date().getDay();
+    const todayFull = fullDays[todayIndex];
+    const todayShort = shortDays[todayIndex];
+
+    const [todayClasses] = await dbPool.query(
+      'SELECT * FROM timetable_slots WHERE (teacherId = ? OR teacherName = ?) AND (dayOfWeek = ? OR dayOfWeek = ? OR dayOfWeek LIKE ?) ORDER BY period ASC',
+      [empId, tchName, todayFull, todayShort, `${todayShort}%`]
+    );
+    res.json(todayClasses);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/teachers/:id/attendance-overview', authenticateToken, requireRole(['ADMIN', 'TEACHER']), async (req, res) => {
+  const { id } = req.params;
+  try {
+    const [tchRows] = await dbPool.query('SELECT * FROM teachers WHERE id = ? OR employeeId = ?', [id, id]);
+    const tch = tchRows[0];
+    const empId = tch ? tch.employeeId : id;
+    const tchName = tch ? tch.name : id;
+
+    const [slots] = await dbPool.query(
+      'SELECT DISTINCT subjectCode, subjectName, department, semester, section, classId FROM timetable_slots WHERE teacherId = ? OR teacherName = ?',
+      [empId, tchName]
+    );
+
+    const overview = [];
+    for (const slot of slots) {
+      const [logs] = await dbPool.query(
+        'SELECT COUNT(*) as total, SUM(CASE WHEN status = "Present" THEN 1 ELSE 0 END) as presentCount FROM attendance_logs WHERE subjectCode = ? OR classId = ?',
+        [slot.subjectCode, slot.classId]
+      );
+      const total = logs[0]?.total || 0;
+      const present = logs[0]?.presentCount || 0;
+      const percentage = total > 0 ? Math.round((present / total) * 100) : 0;
+
+      overview.push({
+        ...slot,
+        totalLogs: total,
+        presentCount: present,
+        attendancePercentage: percentage
+      });
+    }
+
+    res.json(overview);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/attendance', authenticateToken, requireRole(['ADMIN', 'TEACHER', 'STUDENT']), async (req, res) => {
+  try {
+    const [rows] = await dbPool.query('SELECT * FROM attendance_logs ORDER BY date DESC, created_at DESC');
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put('/api/attendance/:id', authenticateToken, requireRole(['ADMIN', 'TEACHER']), async (req, res) => {
+  const { id } = req.params;
+  const { status } = req.body;
+  try {
+    await dbPool.query('UPDATE attendance_logs SET status = ? WHERE id = ?', [status, id]);
+    broadcastRealTimeEvent('ATTENDANCE_CORRECTED', { id, status });
+    res.json({ success: true, message: `Attendance ${id} status updated to ${status}` });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.post('/api/attendance/batch', authenticateToken, requireRole(['ADMIN', 'TEACHER']), async (req, res) => {
+  const { records = [], markedBy = 'Staff Portal' } = req.body;
+  try {
+    let count = 0;
+    for (const rec of records) {
+      const id = `att-${rec.studentId}-${rec.subjectCode || 'GEN'}-${rec.date || new Date().toISOString().split('T')[0]}`;
+      await dbPool.query(`
+        INSERT INTO attendance_logs (id, studentId, studentName, subjectCode, subjectName, date, period, status, markedBy)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON DUPLICATE KEY UPDATE status = VALUES(status), markedBy = VALUES(markedBy)
+      `, [
+        id, rec.studentId, rec.studentName || 'Student', rec.subjectCode || 'SUB',
+        rec.subjectName || 'Subject', rec.date || new Date().toISOString().split('T')[0],
+        rec.period || 'P1', rec.status || 'Present', markedBy
+      ]);
+      count++;
+    }
+    broadcastRealTimeEvent('ATTENDANCE_BATCH_SUBMITTED', { count, markedBy });
+    res.json({ success: true, count, message: `Batch submitted ${count} attendance logs.` });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// -------------------------------------------------------------
+// TEACHER & FACULTY ATTENDANCE ENDPOINTS
+// -------------------------------------------------------------
+app.get('/api/teacher-attendance', authenticateToken, requireRole(['ADMIN', 'TEACHER']), async (req, res) => {
+  try {
+    const [rows] = await dbPool.query('SELECT * FROM teacher_attendance_logs ORDER BY date DESC, teacherId ASC');
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put('/api/teacher-attendance/:id', authenticateToken, requireRole(['ADMIN', 'TEACHER']), async (req, res) => {
+  const { id } = req.params;
+  const { status, remarks } = req.body;
+  try {
+    await dbPool.query('UPDATE teacher_attendance_logs SET status = ?, remarks = COALESCE(?, remarks) WHERE id = ?', [status, remarks, id]);
+    broadcastRealTimeEvent('TEACHER_ATTENDANCE_CORRECTED', { id, status });
+    res.json({ success: true, message: `Teacher attendance ${id} updated to ${status}` });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// -------------------------------------------------------------
+// ASSIGNMENTS & SUBMISSIONS ENDPOINTS
+// -------------------------------------------------------------
+app.get('/api/assignments', authenticateToken, requireRole(['ADMIN', 'TEACHER', 'STUDENT']), async (req, res) => {
+  try {
+    const [assignments] = await dbPool.query('SELECT * FROM assignments ORDER BY dueDate ASC, id DESC');
+    const [submissions] = await dbPool.query('SELECT * FROM assignment_submissions ORDER BY submittedDate DESC');
+
+    const result = assignments.map(a => {
+      const subs = submissions.filter(s => String(s.assignmentId).toLowerCase() === String(a.id).toLowerCase());
+      const mappedSubs = subs.map(s => {
+        const hasMarks = s.marks !== null && s.marks !== undefined && s.marks !== '';
+        return {
+          ...s,
+          file: s.file || s.fileName || 'submission.pdf',
+          fileName: s.fileName || s.file || 'submission.pdf',
+          marks: hasMarks ? Number(s.marks) : null,
+          status: (hasMarks || s.status === 'Graded') ? 'Graded' : (s.status || 'Submitted')
+        };
+      });
+      return {
+        ...a,
+        submissions: mappedSubs,
+        submissionsCount: mappedSubs.length
+      };
+    });
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/assignments', authenticateToken, requireRole(['ADMIN', 'TEACHER']), async (req, res) => {
+  const a = req.body;
+  const id = a.id || `ASN-${Date.now()}`;
+  try {
+    await dbPool.query(`
+      INSERT INTO assignments (id, title, subject, code, classId, teacherId, teacherName, description, instructions, assignedDate, dueDate, maxMarks, status)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON DUPLICATE KEY UPDATE title = VALUES(title), dueDate = VALUES(dueDate), maxMarks = VALUES(maxMarks)
+    `, [
+      id, a.title, a.subject, a.code || a.subjectCode || 'CORE', a.classId || 'ALL',
+      a.teacherId || 'FAC-101', a.teacherName || 'Faculty Member',
+      a.description || '', a.instructions || '',
+      a.assignedDate || new Date().toISOString().split('T')[0],
+      a.dueDate, Number(a.maxMarks || 50), a.status || 'Active'
+    ]);
+
+    // Broadcast assignment notification to all students
+    const notifId = `NOTIF-${Date.now()}`;
+    await dbPool.query(`
+      INSERT INTO notifications (id, userId, userRole, title, message, date, isRead)
+      VALUES (?, 'ALL_STUDENTS', 'STUDENT', ?, ?, NOW(), 0)
+    `, [notifId, `New Assignment: ${a.title}`, `Faculty ${a.teacherName} assigned [${a.title}] due on ${a.dueDate}. Max Marks: ${a.maxMarks}.`]);
+
+    broadcastRealTimeEvent('ASSIGNMENT_CREATED', { id, title: a.title, teacherName: a.teacherName });
+    res.json({ success: true, id, message: 'Assignment created successfully in MySQL.' });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.put('/api/assignments/:id', authenticateToken, requireRole(['ADMIN', 'TEACHER']), async (req, res) => {
+  const { id } = req.params;
+  const a = req.body;
+  try {
+    await dbPool.query(`
+      UPDATE assignments 
+      SET title = COALESCE(?, title), description = COALESCE(?, description),
+          instructions = COALESCE(?, instructions), dueDate = COALESCE(?, dueDate),
+          maxMarks = COALESCE(?, maxMarks), status = COALESCE(?, status)
+      WHERE id = ?
+    `, [a.title, a.description, a.instructions, a.dueDate, a.maxMarks ? Number(a.maxMarks) : null, a.status, id]);
+
+    broadcastRealTimeEvent('ASSIGNMENT_UPDATED', { id });
+    res.json({ success: true, message: `Assignment ${id} updated.` });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.delete('/api/assignments/:id', authenticateToken, requireRole(['ADMIN', 'TEACHER']), async (req, res) => {
+  const { id } = req.params;
+  try {
+    await dbPool.query('DELETE FROM assignment_submissions WHERE assignmentId = ?', [id]);
+    await dbPool.query('DELETE FROM assignments WHERE id = ?', [id]);
+    broadcastRealTimeEvent('ASSIGNMENT_DELETED', { id });
+    res.json({ success: true, message: `Assignment ${id} removed.` });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.post('/api/assignments/:id/submit', authenticateToken, requireRole(['STUDENT']), async (req, res) => {
+  const { id } = req.params;
+  const { studentId, studentName, fileName, comments } = req.body;
+
+  // Strict Object-Level Authorization: Students can only submit their own coursework
+  if (req.user?.role === 'STUDENT') {
+    const authStudentId = req.user.studentId || req.user.id;
+    if (studentId && studentId !== authStudentId && req.user.id !== studentId) {
+      return res.status(403).json({
+        success: false,
+        message: `Forbidden: Object authorization violation. You (${authStudentId}) cannot submit assignments on behalf of student ${studentId}.`
+      });
+    }
+  }
+
+  const effectiveStudentId = (req.user?.role === 'STUDENT') ? (req.user.studentId || req.user.id || studentId) : studentId;
+  const effectiveStudentName = (req.user?.role === 'STUDENT') ? (req.user.name || studentName || 'Student') : studentName;
+
+  const subId = `SUB-${Date.now()}`;
+  const submittedDate = new Date().toISOString().split('T')[0];
+  try {
+    await dbPool.query(`
+      INSERT INTO assignment_submissions (id, assignmentId, studentId, studentName, submittedDate, fileName, comments)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+      ON DUPLICATE KEY UPDATE submittedDate = VALUES(submittedDate), fileName = VALUES(fileName), comments = VALUES(comments)
+    `, [subId, id, effectiveStudentId, effectiveStudentName, submittedDate, fileName || 'submission.pdf', comments || '']);
+
+    // Notify teacher
+    const [asnRows] = await dbPool.query('SELECT teacherId, title FROM assignments WHERE id = ?', [id]);
+    if (asnRows.length > 0) {
+      const notifId = `NOTIF-${Date.now()}`;
+      await dbPool.query(`
+        INSERT INTO notifications (id, userId, userRole, title, message, date, isRead)
+        VALUES (?, ?, 'TEACHER', 'Assignment Submission Received', ?, NOW(), 0)
+      `, [notifId, asnRows[0].teacherId, `Student ${studentName} (${studentId}) submitted assignment: [${asnRows[0].title}].`]);
+    }
+
+    broadcastRealTimeEvent('ASSIGNMENT_SUBMITTED', { assignmentId: id, studentId, studentName });
+    res.json({ success: true, subId, message: 'Assignment submission uploaded and recorded.' });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.put('/api/assignments/:id/submissions/:subId/grade', authenticateToken, requireRole(['ADMIN', 'TEACHER']), async (req, res) => {
+  const { id, subId } = req.params;
+  const { marks, feedback, gradedBy } = req.body;
+  try {
+    const numMarks = Number(marks);
+    await dbPool.query(`
+      UPDATE assignment_submissions
+      SET marks = ?, feedback = ?, status = 'Graded', gradedBy = ?
+      WHERE id = ? OR studentId = ? OR (assignmentId = ? AND (studentId = ? OR id = ?))
+    `, [numMarks, feedback || '', gradedBy || 'Faculty', subId, subId, id, subId, subId]);
+
+    const [subRows] = await dbPool.query('SELECT studentId, assignmentId FROM assignment_submissions WHERE id = ? OR studentId = ?', [subId, subId]);
+    if (subRows.length > 0) {
+      const notifId = `NOTIF-${Date.now()}`;
+      await dbPool.query(`
+        INSERT INTO notifications (id, userId, userRole, title, message, date, isRead)
+        VALUES (?, ?, 'STUDENT', 'Assignment Graded', ?, NOW(), 0)
+      `, [notifId, subRows[0].studentId, `Your submission for assignment ${subRows[0].assignmentId} has been evaluated: ${numMarks} marks.`]);
+    }
+
+    broadcastRealTimeEvent('ASSIGNMENT_GRADED', { subId, marks: numMarks });
+    res.json({ success: true, message: 'Submission evaluated and student notified.' });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// -------------------------------------------------------------
+// NOTIFICATIONS & AUDIT LOGS ENDPOINTS
+// -------------------------------------------------------------
+app.get('/api/notifications', authenticateToken, requireRole(['ADMIN', 'TEACHER', 'STUDENT']), async (req, res) => {
+  try {
+    const [rows] = await dbPool.query('SELECT * FROM notifications ORDER BY date DESC, id DESC');
+    res.json(rows.map(r => ({
+      ...r,
+      read: Boolean(r.isRead)
+    })));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/notifications', authenticateToken, requireRole(['ADMIN', 'TEACHER']), async (req, res) => {
+  const { userId, userRole, title, message } = req.body;
+  const id = `NOTIF-${Date.now()}`;
+  try {
+    await dbPool.query(`
+      INSERT INTO notifications (id, userId, userRole, title, message, date, isRead)
+      VALUES (?, ?, ?, ?, ?, NOW(), 0)
+    `, [id, userId || 'ALL_USERS', userRole || 'ALL', title, message]);
+
+    broadcastRealTimeEvent('NOTIFICATION_RECEIVED', { id, userId, title });
+    res.json({ success: true, id });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.put('/api/notifications/:id/read', authenticateToken, requireRole(['ADMIN', 'TEACHER', 'STUDENT']), async (req, res) => {
+  const { id } = req.params;
+  try {
+    await dbPool.query('UPDATE notifications SET isRead = 1 WHERE id = ?', [id]);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.put('/api/notifications/read-all', authenticateToken, requireRole(['ADMIN', 'TEACHER', 'STUDENT']), async (req, res) => {
+  const { userId, userRole } = req.body;
+  try {
+    if (userId) {
+      await dbPool.query('UPDATE notifications SET isRead = 1 WHERE userId = ? OR userId = "ALL_USERS" OR userRole = ?', [userId, userRole]);
+    } else {
+      await dbPool.query('UPDATE notifications SET isRead = 1');
+    }
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.delete('/api/notifications/:id', authenticateToken, requireRole(['ADMIN', 'TEACHER', 'STUDENT']), async (req, res) => {
+  const { id } = req.params;
+  try {
+    await dbPool.query('DELETE FROM notifications WHERE id = ?', [id]);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.delete('/api/notifications/clear', authenticateToken, requireRole(['ADMIN', 'TEACHER', 'STUDENT']), async (req, res) => {
+  const { userId } = req.body;
+  try {
+    if (userId) {
+      await dbPool.query('DELETE FROM notifications WHERE userId = ?', [userId]);
+    }
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.get('/api/audit-logs', authenticateToken, requireRole(['ADMIN', 'TEACHER', 'STUDENT']), async (req, res) => {
+  try {
+    if (req.user?.role !== 'ADMIN') {
+      return res.json([]);
+    }
+    const [rows] = await dbPool.query('SELECT * FROM audit_logs ORDER BY timestamp DESC, id DESC');
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/audit-logs', authenticateToken, requireRole(['ADMIN', 'TEACHER', 'STUDENT']), async (req, res) => {
+  const { actorId, actorRole, action, entityType, entityId, details } = req.body;
+  const id = `ADT-${Date.now()}`;
+  try {
+    await dbPool.query(`
+      INSERT INTO audit_logs (id, actorId, actorRole, action, entityType, entityId, details, timestamp)
+      VALUES (?, ?, ?, ?, ?, ?, ?, NOW())
+    `, [id, actorId || 'SYSTEM', actorRole || 'SYSTEM', action, entityType || 'SYSTEM', entityId || '', details || '']);
+    res.json({ success: true, id });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.post('/api/teacher-attendance', authenticateToken, requireRole(['ADMIN', 'TEACHER']), async (req, res) => {
+  const { teacherId, teacherName, department, designation, date, checkInTime, checkOutTime, status, remarks } = req.body;
+  const id = `tatt-${date}-${teacherId}`;
+  try {
+    await dbPool.query(`
+      INSERT INTO teacher_attendance_logs (id, teacherId, teacherName, department, designation, date, checkInTime, checkOutTime, status, biometricMode, remarks)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'Biometric Smart Card', ?)
+      ON DUPLICATE KEY UPDATE status = VALUES(status), remarks = VALUES(remarks)
+    `, [id, teacherId, teacherName, department, designation || 'Faculty Member', date, checkInTime || '08:45 AM', checkOutTime || '04:45 PM', status || 'Present', remarks || 'Regular Academic Day']);
+
+    broadcastRealTimeEvent('TEACHER_ATTENDANCE_MARKED', { id, teacherId, status });
+    res.json({ success: true, id });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.post('/api/attendance', authenticateToken, requireRole(['ADMIN', 'TEACHER']), async (req, res) => {
+  const { records } = req.body;
+  if (!Array.isArray(records) || records.length === 0) {
+    return res.status(400).json({ success: false, message: 'Invalid records array' });
+  }
+
+  try {
+    const today = new Date().toISOString().split('T')[0];
+    const values = records.map((r, idx) => [
+      r.id || `att-${Date.now()}-${idx}-${Math.floor(100 + Math.random() * 900)}`,
+      r.studentId,
+      r.studentName,
+      r.subjectCode,
+      r.subjectName,
+      r.classId || null,
+      r.date || today,
+      r.period || '09:30 AM',
+      r.status || 'Present',
+      r.markedBy || null
+    ]);
+
+    await dbPool.query(
+      `INSERT INTO attendance_logs (id, studentId, studentName, subjectCode, subjectName, classId, date, period, status, markedBy)
+       VALUES ?
+       ON DUPLICATE KEY UPDATE status = VALUES(status), studentName = VALUES(studentName)`,
+      [values]
+    );
+
+    broadcastRealTimeEvent('ATTENDANCE_MARKED', { count: records.length, date: records[0]?.date || today });
+    res.json({ success: true, message: `Marked attendance for ${records.length} students in MySQL database.` });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.get('/api/helpdesk', authenticateToken, requireRole(['ADMIN', 'TEACHER', 'STUDENT']), async (req, res) => {
+  try {
+    const [rows] = await dbPool.query('SELECT * FROM helpdesk_tickets ORDER BY created_at DESC');
+    res.json(rows.map(r => {
+      let responses = [];
+      try {
+        responses = typeof r.replies === 'string' ? JSON.parse(r.replies) : (r.replies || []);
+      } catch (e) {}
+      
+      const isStaff = r.source === 'STAFF' || (r.staffId && String(r.staffId).startsWith('EMP'));
+      const applicantName = r.applicantName || r.studentName || r.staffName || (isStaff ? 'Faculty Member' : 'Enrolled Student');
+      const applicantId = r.applicantId || r.studentId || r.staffId || 'STU-2024-001';
+      const applicantRole = r.applicantRole || r.source || (isStaff ? 'STAFF' : 'STUDENT');
+      const targetRole = r.targetRole || (r.targetDesk?.toLowerCase().includes('staff') ? 'STAFF' : 'ADMIN');
+      const createdAt = r.createdAt || r.date || (r.created_at ? new Date(r.created_at).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]);
+
+      return {
+        ...r,
+        applicantName,
+        applicantId,
+        applicantRole,
+        targetRole,
+        createdAt,
+        responses,
+        status: (r.status === 'In Progress' || responses.length > 0) ? 'Responded' : (r.status || 'Open')
+      };
+    }));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/helpdesk/tickets', authenticateToken, requireRole(['ADMIN', 'TEACHER', 'STUDENT']), async (req, res) => {
+  try {
+    const [rows] = await dbPool.query('SELECT * FROM helpdesk_tickets ORDER BY created_at DESC');
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/users', authenticateToken, requireRole(['ADMIN', 'TEACHER']), async (req, res) => {
+  try {
+    const [students] = await dbPool.query('SELECT id, studentId, name, email, department, departmentCode, year, semester, "STUDENT" as role FROM students');
+    const [teachers] = await dbPool.query('SELECT id, employeeId, name, email, department, designation, "TEACHER" as role FROM teachers');
+    res.json([...students, ...teachers]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/marks', authenticateToken, requireRole(['ADMIN', 'TEACHER', 'STAFF']), async (req, res) => {
+  const m = req.body;
+  const id = m.id || `MRK-${m.examId || Date.now()}-${m.studentId || 'std'}`;
+  const marksObtained = Number(m.marksObtained || 0);
+  const maxMarks = Number(m.maxMarks || 100);
+  const grade = m.grade || (marksObtained >= 90 ? 'O' : marksObtained >= 80 ? 'A+' : marksObtained >= 70 ? 'A' : marksObtained >= 60 ? 'B+' : marksObtained >= 50 ? 'B' : marksObtained >= 40 ? 'C' : 'F');
+  const status = m.status || 'Submitted';
+  const published = m.published ? 1 : 0;
+
+  try {
+    await dbPool.query(`
+      INSERT INTO internal_marks (
+        id, examId, studentId, studentName, subjectCode, subjectName,
+        marksObtained, maxMarks, grade, status, published, remarks
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON DUPLICATE KEY UPDATE marksObtained = VALUES(marksObtained), grade = VALUES(grade), remarks = VALUES(remarks), status = VALUES(status), published = VALUES(published)
+    `, [id, m.examId || 'EXAM-GEN', m.studentId, m.studentName, m.subjectCode || 'SUB', m.subjectName || 'Course', marksObtained, maxMarks, grade, status, published, m.remarks || '']);
+
+    broadcastRealTimeEvent('MARKS_UPDATED', { id, examId: m.examId, studentId: m.studentId });
+    res.json({ success: true, id });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.post('/api/contact', publicApiRateLimiter, async (req, res) => {
+  const { name, email, phone, subject, message } = req.body || {};
+  if (!name || !email || !message) {
+    return res.status(400).json({ success: false, message: 'Name, email, and message are required.' });
+  }
+
+  const id = `TKT-${Math.floor(1000 + Math.random() * 9000)}`;
+  const today = new Date().toISOString().split('T')[0];
+  const fullDesc = `Public Contact Message from ${name} (${email}, Phone: ${phone || 'N/A'}):\n\n${message}`;
+
+  try {
+    await dbPool.query(
+      `INSERT INTO helpdesk_tickets (id, ticketNumber, subject, category, priority, status, source, targetDesk, studentId, studentName, staffId, staffName, department, description, replies, date)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        id, id, `[Contact Us] ${subject || 'General Inquiry'}`, 'Public Inquiry', 'Medium', 'Open', 'PUBLIC_CONTACT',
+        'Admin Desk', null, name, null, null, 'General', fullDesc,
+        JSON.stringify([]), today
+      ]
+    );
+
+    broadcastRealTimeEvent('HELPDESK_TICKET_SUBMITTED', { id, subject: `[Contact Us] ${subject || 'General Inquiry'}`, source: 'PUBLIC_CONTACT' });
+    res.json({ success: true, message: 'Contact message received successfully.' });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+app.post('/api/helpdesk', authenticateToken, requireRole(['ADMIN', 'TEACHER', 'STUDENT']), async (req, res) => {
+  const t = req.body;
+  const id = t.id || `TKT-${Math.floor(1000 + Math.random() * 9000)}`;
+  const applicantName = t.applicantName || t.studentName || t.staffName || 'Applicant';
+  const applicantId = t.applicantId || t.studentId || t.staffId || 'STU-2024-001';
+  const isStaff = t.applicantRole === 'STAFF' || t.source === 'STAFF' || String(applicantId).startsWith('EMP');
+  const source = isStaff ? 'STAFF' : 'STUDENT';
+  const targetDesk = t.targetRole === 'STAFF' ? 'Staff Desk' : 'Admin Desk';
+  const today = t.createdAt || t.date || new Date().toISOString().split('T')[0];
+
+  try {
+    await dbPool.query(
+      `INSERT INTO helpdesk_tickets (id, ticketNumber, subject, category, priority, status, source, targetDesk, studentId, studentName, staffId, staffName, department, description, replies, date)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        id, id, t.subject, t.category || 'General', t.priority || 'Medium', 'Open', source,
+        targetDesk, isStaff ? null : applicantId, isStaff ? null : applicantName,
+        isStaff ? applicantId : null, isStaff ? applicantName : null, t.department || 'General', t.description,
+        JSON.stringify(t.responses || t.replies || []), today
+      ]
+    );
+
+    broadcastRealTimeEvent('HELPDESK_TICKET_SUBMITTED', { id, subject: t.subject, source });
+    res.json({ success: true, id, ticketNumber: id });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+const handleHelpdeskReply = async (req, res) => {
+  const { id } = req.params;
+  const { message, author, sender, role } = req.body;
+  try {
+    const [rows] = await dbPool.query('SELECT replies FROM helpdesk_tickets WHERE id = ?', [id]);
+    let currentReplies = [];
+    if (rows.length > 0 && rows[0].replies) {
+      try {
+        currentReplies = typeof rows[0].replies === 'string' ? JSON.parse(rows[0].replies) : (rows[0].replies || []);
+      } catch (e) {}
+    }
+
+    const newReply = {
+      id: `rep-${Date.now()}`,
+      author: author || sender || 'Administrative Desk',
+      role: role || 'ADMIN',
+      message,
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      date: new Date().toISOString().split('T')[0]
+    };
+
+    currentReplies.push(newReply);
+
+    if (rows.length > 0) {
+      await dbPool.query(
+        'UPDATE helpdesk_tickets SET replies = ?, status = "Resolved" WHERE id = ?',
+        [JSON.stringify(currentReplies), id]
+      );
+    }
+
+    broadcastRealTimeEvent('HELPDESK_REPLY_POSTED', { ticketId: id, reply: newReply });
+    res.json({ success: true, reply: newReply });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+};
+
+app.put('/api/helpdesk/:id/reply', authenticateToken, requireRole(['ADMIN', 'TEACHER']), handleHelpdeskReply);
+app.post('/api/helpdesk/:id/reply', authenticateToken, requireRole(['ADMIN', 'TEACHER']), handleHelpdeskReply);
+
+app.get('/api/announcements', async (req, res) => {
+  try {
+    const [rows] = await dbPool.query('SELECT * FROM announcements ORDER BY created_at DESC');
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/announcements', authenticateToken, requireRole(['ADMIN', 'TEACHER']), async (req, res) => {
+  const { title, content, category, target, author } = req.body;
+  const id = `ANN-${Date.now()}`;
+  const date = new Date().toISOString().split('T')[0];
+  try {
+    await dbPool.query(
+      `INSERT INTO announcements (id, title, content, category, target, author, date)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [id, title, content, category || 'General Notice', target || 'All', author || 'Administration', date]
+    );
+
+    broadcastRealTimeEvent('ANNOUNCEMENT_BROADCAST', { id, title, content, author, date });
+    res.json({ success: true, id, title });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.get('/api/leave-requests', authenticateToken, requireRole(['ADMIN', 'TEACHER', 'STUDENT']), async (req, res) => {
+  try {
+    const [rows] = await dbPool.query('SELECT * FROM leave_requests ORDER BY created_at DESC');
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/leave-requests', authenticateToken, requireRole(['ADMIN', 'TEACHER', 'STUDENT']), async (req, res) => {
+  const l = req.body;
+  const id = `L-${Math.floor(100 + Math.random() * 900)}`;
+  try {
+    await dbPool.query(
+      `INSERT INTO leave_requests (id, applicantId, applicantName, applicantRole, department, leaveType, fromDate, toDate, days, reason, status, appliedOn)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [id, l.applicantId || 'STU-001', l.applicantName, l.applicantRole || 'STUDENT', l.department || 'Computer Science', l.leaveType || 'Medical Leave', l.fromDate, l.toDate, l.days || 1, l.reason, 'Pending', new Date().toISOString().split('T')[0]]
+    );
+
+    broadcastRealTimeEvent('LEAVE_REQUEST_SUBMITTED', { id, applicantName: l.applicantName });
+    res.json({ success: true, id });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.put('/api/leave-requests/:id', authenticateToken, requireRole(['ADMIN', 'TEACHER']), async (req, res) => {
+  const { id } = req.params;
+  const { status, rejectionReason } = req.body;
+  try {
+    await dbPool.query(
+      `UPDATE leave_requests SET status = ?, rejectionReason = ? WHERE id = ?`,
+      [status, rejectionReason || null, id]
+    );
+
+    broadcastRealTimeEvent('LEAVE_STATUS_UPDATED', { id, status, rejectionReason });
+    res.json({ success: true, id, status });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// -------------------------------------------------------------
+// 7. EXAMINATIONS & STUDENT RESULTS ENDPOINTS
+// -------------------------------------------------------------
+app.get('/api/examinations', authenticateToken, requireRole(['ADMIN', 'TEACHER', 'STUDENT']), async (req, res) => {
+  try {
+    const [rows] = await dbPool.query('SELECT * FROM examinations ORDER BY date ASC');
+    res.json(rows.map(r => ({
+      ...r,
+      isPublished: Boolean(r.isPublished),
+      published: Boolean(r.isPublished)
+    })));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/examinations', authenticateToken, requireRole(['ADMIN', 'TEACHER']), async (req, res) => {
+  const ex = req.body;
+  const id = ex.id || `EXAM-2026-${Math.floor(10 + Math.random() * 90)}`;
+  try {
+    await dbPool.query(`
+      INSERT INTO examinations (
+        id, name, type, department, course, semester, subjectCode,
+        subjectName, assignedTeacherId, date, time, room, maxMarks,
+        eligibilityAttendance, status, isPublished
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `, [
+      id, ex.name, ex.type || 'Mid-Term', ex.department, ex.course, ex.semester,
+      ex.subjectCode, ex.subjectName, ex.assignedTeacherId || '', ex.date,
+      ex.time || '10:00 AM - 01:00 PM', ex.room || 'Main Exam Hall',
+      Number(ex.maxMarks || 100), Number(ex.eligibilityAttendance || 75),
+      ex.status || 'Marks Pending', 0
+    ]);
+
+    broadcastRealTimeEvent('EXAMINATION_CREATED', { id, name: ex.name });
+    res.json({ success: true, id, message: 'Examination created successfully.' });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.put('/api/examinations/:id/publish', authenticateToken, requireRole(['ADMIN']), async (req, res) => {
+  const { id } = req.params;
+  try {
+    await dbPool.query("UPDATE examinations SET isPublished = 1, status = 'Results Published' WHERE id = ?", [id]);
+    await dbPool.query('UPDATE internal_marks SET published = 1 WHERE examId = ?', [id]);
+
+    broadcastRealTimeEvent('RESULTS_PUBLISHED', { examId: id });
+    res.json({ success: true, message: `Results for exam ${id} published successfully.` });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.get('/api/marks', authenticateToken, requireRole(['ADMIN', 'TEACHER', 'STUDENT']), async (req, res) => {
+  try {
+    const [rows] = await dbPool.query('SELECT * FROM internal_marks ORDER BY examId, studentId');
+    res.json(rows.map(r => ({
+      ...r,
+      published: Boolean(r.published),
+      teacherSubmitted: true
+    })));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/marks/submit', authenticateToken, requireRole(['ADMIN', 'TEACHER', 'STAFF']), async (req, res) => {
+  const { examId, marks } = req.body;
+  if (!Array.isArray(marks) || marks.length === 0) {
+    return res.status(400).json({ success: false, message: 'Invalid marks array' });
+  }
+
+  try {
+    for (const m of marks) {
+      const id = m.id || `MRK-${examId}-${m.studentId}`;
+      const marksObtained = Number(m.marksObtained || 0);
+      const grade = m.grade || (marksObtained >= 90 ? 'O' : marksObtained >= 80 ? 'A+' : marksObtained >= 70 ? 'A' : marksObtained >= 60 ? 'B+' : 'B');
+      
+      await dbPool.query(`
+        INSERT INTO internal_marks (
+          id, examId, studentId, studentName, subjectCode, subjectName,
+          marksObtained, maxMarks, grade, status, published, remarks
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'Submitted', 0, ?)
+        ON DUPLICATE KEY UPDATE marksObtained = VALUES(marksObtained), grade = VALUES(grade), remarks = VALUES(remarks)
+      `, [
+        id, examId, m.studentId, m.studentName, m.subjectCode, m.subjectName,
+        marksObtained, Number(m.maxMarks || 100), grade, m.remarks || ''
+      ]);
+    }
+
+    await dbPool.query("UPDATE examinations SET status = 'Marks Submitted' WHERE id = ?", [examId]);
+    broadcastRealTimeEvent('MARKS_SUBMITTED', { examId, count: marks.length });
+    res.json({ success: true, message: `Submitted marks for ${marks.length} students in MySQL database.` });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.get('/api/results/student/:studentId', authenticateToken, requireRole(['ADMIN', 'TEACHER', 'STUDENT']), async (req, res) => {
+  const { studentId } = req.params;
+  try {
+    const [summaryRows] = await dbPool.query('SELECT * FROM results WHERE student_id = ? ORDER BY semester', [studentId]);
+    const [marksRows] = await dbPool.query('SELECT * FROM internal_marks WHERE studentId = ? AND published = 1', [studentId]);
+    res.json({ summary: summaryRows, marks: marksRows });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+// Clean all demo data endpoint (preserves Admins & Departments)
+app.post('/api/admin/clean-demo-data', authenticateToken, requireRole(['ADMIN']), async (req, res) => {
+  const { confirm, confirmationString } = req.body || {};
+  if (confirm !== 'CONFIRM_DELETE' && confirmationString !== 'CONFIRM_DELETE') {
+    return res.status(400).json({ 
+      success: false, 
+      message: 'Destructive action blocked. Requiring confirmation string "CONFIRM_DELETE" in request body.' 
+    });
+  }
+
+  try {
+    await dbPool.query("DELETE FROM students");
+    await dbPool.query("DELETE FROM teachers");
+    await dbPool.query("DELETE FROM courses");
+    await dbPool.query("DELETE FROM subjects");
+    await dbPool.query("DELETE FROM attendance_logs");
+    await dbPool.query("DELETE FROM teacher_attendance_logs");
+    await dbPool.query("DELETE FROM faculty_class_assignments");
+    await dbPool.query("DELETE FROM examinations");
+    await dbPool.query("DELETE FROM marks");
+    await dbPool.query("DELETE FROM internal_marks");
+    await dbPool.query("DELETE FROM results");
+    await dbPool.query("DELETE FROM assignments");
+    await dbPool.query("DELETE FROM assignment_submissions");
+    await dbPool.query("DELETE FROM notifications");
+    await dbPool.query("DELETE FROM leave_requests");
+    await dbPool.query("DELETE FROM fee_payments");
+    await dbPool.query("DELETE FROM admission_applications");
+    await dbPool.query("DELETE FROM helpdesk_tickets");
+    await dbPool.query("DELETE FROM announcements");
+    await dbPool.query("DELETE FROM audit_logs");
+
+    broadcastRealTimeEvent('DEMO_DATA_CLEANED', { status: 'success' });
+    res.json({ success: true, message: 'All demo AI data successfully flushed from MySQL database.' });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Serve Vite Production Build Static Assets
+app.use(express.static(distPath));
+
+// SPA Catch-All Handler (fallback for React Router frontend routes)
+app.get('*', (req, res, next) => {
+  if (req.path.startsWith('/api') || req.path.startsWith('/health')) {
+    return next();
+  }
+  res.sendFile(path.join(distPath, 'index.html'), (err) => {
+    if (err) next();
+  });
+});
+
+// 404 Route Handler for undefined API routes
+app.use('/api/*', (req, res, next) => {
+  res.status(404).json({
+    success: false,
+    message: `API endpoint '${req.originalUrl || req.url}' not found on server.`,
+    errorCode: 'NOT_FOUND'
+  });
+});
+
+// Centralized Global Express Error Handler Middleware
+app.use(globalErrorHandler);
+
+// Process-level Crash Resistance & Graceful Shutdown
+let server = null;
+if (!process.env.VERCEL) {
+  server = app.listen(PORT, '0.0.0.0', () => {
+    console.log(`🌐 Kalpanaaa Enterprise API Server running on port ${PORT}`);
+  });
+}
+
+const gracefulShutdown = async (signal) => {
+  console.log(`\n⚠️ Received ${signal}. Initiating graceful shutdown...`);
+  if (server) {
+    server.close(async () => {
+      console.log('HTTP server closed.');
+      try {
+        await dbPool.end();
+        console.log('MySQL Connection pool closed cleanly.');
+        process.exit(0);
+      } catch (err) {
+        console.error('Error closing MySQL pool:', err);
+        process.exit(1);
+      }
+    });
+  } else {
+    process.exit(0);
+  }
+};
+
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+process.on('message', (msg) => {
+  if (msg === 'shutdown' || msg === 'SIGTERM') {
+    gracefulShutdown('SIGTERM');
+  }
+});
+
+process.on('uncaughtException', (err) => {
+  console.error('CRITICAL: Uncaught Exception detected:', err);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('CRITICAL: Unhandled Rejection at:', promise, 'reason:', reason);
+});
+
+export default app;

@@ -1,23 +1,11 @@
-# Dependencies & Bundles
 node_modules/
 dist/
-target/
-*.jar
-*.war
-*.class
-
-# IDE & OS
-.idea/
-*.iml
-.vscode/
-.DS_Store
-Thumbs.db
-
-# Environment variables & logs
+.vercel/
+*.log
 .env
 .env.local
-*.log
-
-# Temp files
-*.tmp
-*.bak
+.env.production.local
+server/.env
+scratch/
+test-results/
+playwright-report/
